@@ -17,7 +17,9 @@ function fallback(source) {
   const mask = new Uint8Array(width * height), seen = new Uint8Array(width * height), out = [];
   for (let i = 0; i < mask.length; i++) {
     const p = i * 4, hsv = rgbToHsv(data[p], data[p + 1], data[p + 2]);
-    mask[i] = hsv.v > .55 && hsv.s > .10 && hsv.s < .78 && hsv.h >= 25 && hsv.h <= 70 ? 1 : 0;
+    const yellow = hsv.v > .45 && hsv.s > .08 && hsv.s < .82 && hsv.h >= 20 && hsv.h <= 70;
+    const white = hsv.v > .68 && hsv.s < .22;
+    mask[i] = yellow || white ? 1 : 0;
   }
   for (let y = 2; y < height - 2; y++) for (let x = 2; x < width - 2; x++) {
     const start = y * width + x; if (!mask[start] || seen[start]) continue;
@@ -29,7 +31,7 @@ function fallback(source) {
         if (np >= 0 && np < mask.length && !seen[np] && mask[np]) { seen[np] = 1; q.push(np); }
     }
     const w = maxX - minX + 1, h = maxY - minY + 1, ratio = Math.max(w, h) / Math.min(w, h);
-    if (n > Math.max(80, width * height * .0002) && n < width * height * .08 && ratio < 2.5)
+    if (n > Math.max(100, width * height * .00015) && n < width * height * .08 && ratio < 2.4)
       out.push({ x: sx / n, y: sy / n, r: Math.max(8, Math.min(80, Math.max(w, h) / 2)) });
   }
   return out.filter((d, i, a) => a.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < d.r * .7) === i).slice(0, 100);
@@ -52,16 +54,33 @@ async function loadOpenCV() {
 export async function detect(source) {
   await loadOpenCV();
   if (state.loaded && window.cv?.Mat) {
-    const mat = cv.imread(source), rgb = new cv.Mat(), hsv = new cv.Mat(), mask = new cv.Mat(), contours = new cv.MatVector(), hierarchy = new cv.Mat(), out = [];
+    const mat = cv.imread(source), rgb = new cv.Mat(), hsv = new cv.Mat(), gray = new cv.Mat(), topHat = new cv.Mat(), topHatMask = new cv.Mat(), colorMask = new cv.Mat(), neutralMask = new cv.Mat(), whiteMask = new cv.Mat(), mask = new cv.Mat(), contours = new cv.MatVector(), hierarchy = new cv.Mat(), out = [];
     try {
-      cv.cvtColor(mat, rgb, cv.COLOR_RGBA2RGB); cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
-      const low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [12, 18, 70, 0]);
-      const high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [48, 235, 255, 255]);
-      cv.inRange(hsv, low, high, mask); low.delete(); high.delete();
+      cv.cvtColor(mat, rgb, cv.COLOR_RGBA2RGB); cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV); cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+      const colorLow = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [12, 18, 70, 0]);
+      const colorHigh = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [48, 235, 255, 255]);
+      const neutralLow = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 150, 0]);
+      const neutralHigh = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [179, 58, 255, 255]);
+      cv.inRange(hsv, colorLow, colorHigh, colorMask);
+      cv.inRange(hsv, neutralLow, neutralHigh, neutralMask);
+      const topHatKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(31, 31));
+      cv.morphologyEx(gray, topHat, cv.MORPH_TOPHAT, topHatKernel);
+      cv.threshold(topHat, topHatMask, 14, 255, cv.THRESH_BINARY);
+      cv.bitwise_and(neutralMask, topHatMask, whiteMask);
+      cv.bitwise_or(colorMask, whiteMask, mask);
+      [colorLow, colorHigh, neutralLow, neutralHigh].forEach(x => x.delete());
+      topHatKernel.delete();
       cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-      for (let i = 0; i < contours.size(); i++) { const c = contours.get(i), r = cv.boundingRect(c), m = cv.moments(c); if (m.m00 && r.width > 8 && r.height > 8) out.push({ x: m.m10 / m.m00, y: m.m01 / m.m00, r: Math.max(r.width, r.height) / 2 }); c.delete(); }
+      for (let i = 0; i < contours.size(); i++) {
+        const c = contours.get(i), r = cv.boundingRect(c), area = cv.contourArea(c);
+        const perimeter = cv.arcLength(c, true), circularity = perimeter ? 4 * Math.PI * area / (perimeter * perimeter) : 0;
+        const ratio = Math.max(r.width, r.height) / Math.max(1, Math.min(r.width, r.height)), m = cv.moments(c);
+        if (m.m00 && r.width > 8 && r.height > 8 && area > 80 && circularity > .16 && ratio < 2.6)
+          out.push({ x: m.m10 / m.m00, y: m.m01 / m.m00, r: Math.max(r.width, r.height) / 2 });
+        c.delete();
+      }
       if (out.length) return out.slice(0, 100);
-    } finally { [mat, rgb, hsv, mask, contours, hierarchy].forEach(x => x.delete()); }
+    } finally { [mat, rgb, hsv, gray, topHat, topHatMask, colorMask, neutralMask, whiteMask, mask, contours, hierarchy].forEach(x => x.delete()); }
   }
   // Keep the public contract stable while remaining usable without a CDN.
   return fallback(source);

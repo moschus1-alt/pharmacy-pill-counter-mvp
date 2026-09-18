@@ -30,18 +30,26 @@ function rgbToHsv(r, g, b) { r /= 255; g /= 255; b /= 255; const mx = Math.max(r
 function colorFallback(source) {
   const c = document.createElement('canvas'), ctx = c.getContext('2d', { willReadFrequently: true }); c.width = source.width; c.height = source.height; ctx.drawImage(source, 0, 0);
   const { data, width, height } = ctx.getImageData(0, 0, c.width, c.height), mask = new Uint8Array(width * height), seen = new Uint8Array(width * height), out = [];
-  for (let i = 0; i < mask.length; i++) { const p = i * 4, hsv = rgbToHsv(data[p], data[p + 1], data[p + 2]); mask[i] = hsv.v > .55 && hsv.s > .10 && hsv.s < .78 && hsv.h >= 25 && hsv.h <= 70 ? 1 : 0; }
+  for (let i = 0; i < mask.length; i++) {
+    const p = i * 4, hsv = rgbToHsv(data[p], data[p + 1], data[p + 2]);
+    const yellow = hsv.v > .45 && hsv.s > .08 && hsv.s < .82 && hsv.h >= 20 && hsv.h <= 70;
+    const white = hsv.v > .68 && hsv.s < .22;
+    mask[i] = yellow || white ? 1 : 0;
+  }
   for (let y = 2; y < height - 2; y++) for (let x = 2; x < width - 2; x++) { const start = y * width + x; if (!mask[start] || seen[start]) continue; const q = [start]; seen[start] = 1; let n = 0, sx = 0, sy = 0, minX = x, maxX = x, minY = y, maxY = y;
     while (q.length) { const p = q.pop(), px = p % width, py = (p - px) / width; n++; sx += px; sy += py; minX = Math.min(minX, px); maxX = Math.max(maxX, px); minY = Math.min(minY, py); maxY = Math.max(maxY, py); for (const np of [p - 1, p + 1, p - width, p + width]) if (np >= 0 && np < mask.length && !seen[np] && mask[np]) { seen[np] = 1; q.push(np); } }
-    const w = maxX - minX + 1, h = maxY - minY + 1, ratio = Math.max(w, h) / Math.min(w, h); if (n > Math.max(80, width * height * .0002) && n < width * height * .08 && ratio < 2.5) out.push({ x: sx / n, y: sy / n, r: Math.max(8, Math.min(80, Math.max(w, h) / 2)) });
+    const w = maxX - minX + 1, h = maxY - minY + 1, ratio = Math.max(w, h) / Math.min(w, h); if (n > Math.max(100, width * height * .00015) && n < width * height * .08 && ratio < 2.4) out.push({ x: sx / n, y: sy / n, r: Math.max(8, Math.min(80, Math.max(w, h) / 2)) });
   }
   return out.filter((d, i, a) => a.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < d.r * .7) === i).slice(0, 100);
 }
 function openCvDetect(source) {
   const mat = cv.imread(source), rgb = new cv.Mat(), hsv = new cv.Mat(), gray = new cv.Mat(), enhanced = new cv.Mat();
-  const adaptive = new cv.Mat(), bright = new cv.Mat(), colorMask = new cv.Mat(), mask = new cv.Mat();
+  const adaptive = new cv.Mat(), bright = new cv.Mat(), topHat = new cv.Mat(), topHatMask = new cv.Mat();
+  const colorMask = new cv.Mat(), neutralMask = new cv.Mat(), whiteMask = new cv.Mat(), mask = new cv.Mat();
+  const blurred = new cv.Mat(), circles = new cv.Mat();
   const roiMask = new cv.Mat(mat.rows, mat.cols, cv.CV_8UC1, new cv.Scalar(0));
   const candidates = [], cleanup = [];
+  let whiteCoreCount = 0;
   const minArea = Math.max(60, mat.cols * mat.rows * .00015), maxArea = mat.cols * mat.rows * .18;
   try {
     cv.cvtColor(mat, rgb, cv.COLOR_RGBA2RGB);
@@ -63,14 +71,29 @@ function openCvDetect(source) {
     const colorLow = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [12, 18, 70, 0]);
     const colorHigh = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [48, 235, 255, 255]);
     cv.inRange(hsv, colorLow, colorHigh, colorMask);
-    // Use the color mask as the primary foreground. Adaptive brightness is
-    // useful for pale tablets, but intersecting it can erase yellow tablets
-    // on a light tray before contours are even extracted.
-    colorMask.copyTo(mask);
+    // White tablets on steel have little hue, so combine the yellow branch
+    // with a low-saturation/high-value branch. Shape filtering below rejects
+    // the much larger metal reflections and tray rim.
+    const neutralLow = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 145, 0]);
+    const neutralHigh = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [179, 58, 255, 255]);
+    cv.inRange(hsv, neutralLow, neutralHigh, neutralMask);
+    // A large top-hat removes the bowl's slow brightness gradient and keeps
+    // compact bright tablet faces while suppressing broad metal reflections.
+    const topHatKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(31, 31));
+    cv.morphologyEx(gray, topHat, cv.MORPH_TOPHAT, topHatKernel);
+    cv.threshold(topHat, topHatMask, 14, 255, cv.THRESH_BINARY);
+    cv.bitwise_and(neutralMask, topHatMask, whiteMask);
+    cv.bitwise_or(colorMask, whiteMask, mask);
+    const whiteMode = mat.rows > mat.cols * 1.1 ||
+      cv.countNonZero(colorMask) < mat.rows * mat.cols * .04;
     colorLow.delete(); colorHigh.delete();
+    neutralLow.delete(); neutralHigh.delete();
+    topHatKernel.delete();
     const inset = Math.max(4, Math.round(Math.min(mat.cols, mat.rows) * .025));
     cv.rectangle(roiMask, new cv.Point(inset, inset), new cv.Point(mat.cols - inset, mat.rows - inset), new cv.Scalar(255), -1);
     cv.bitwise_and(mask, roiMask, mask);
+    const openKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+    cv.morphologyEx(mask, mask, cv.MORPH_OPEN, openKernel); cleanup.push(openKernel);
     const closeKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
     cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, closeKernel); cleanup.push(closeKernel);
     const collect = (sourceMask, erosionSize) => {
@@ -91,6 +114,23 @@ function openCvDetect(source) {
       [eroded, contours, hierarchy, kernel].forEach(x => x.delete()); return found;
     };
     const conservative = collect(mask, 3), alternate = collect(mask, 7);
+    // A stronger erosion is useful for white tablets that touch at their
+    // edges. Their compact cores remain separate even when the full white
+    // foreground is joined by glare.
+    const whiteCores = collect(whiteMask, 7);
+    whiteCoreCount = whiteMode ? whiteCores.length : 0;
+    if (whiteMode) whiteCores.forEach(item => candidates.push({ x: item.x, y: item.y, r: Math.max(7, item.r * .82) }));
+    if (whiteMode && whiteCoreCount >= 3) {
+      cv.medianBlur(gray, blurred, 5);
+      cv.HoughCircles(blurred, circles, cv.HOUGH_GRADIENT, 1.2, 28, 90, 28, 20, 55);
+      for (let i = 0; i < circles.cols; i++) {
+        const x = circles.data32F[i * 3], y = circles.data32F[i * 3 + 1], r = circles.data32F[i * 3 + 2];
+        const ix = Math.round(x), iy = Math.round(y);
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(r) &&
+            ix >= 2 && iy >= 2 && ix < mat.cols - 2 && iy < mat.rows - 2 &&
+            whiteMask.ucharAt(iy, ix) > 0) candidates.push({ x, y, r });
+      }
+    }
     // A broad contour containing two eroded centers is two touching pills, not one.
     conservative.forEach(item => {
       const inside = alternate.filter(other => cv.pointPolygonTest(item.contour, new cv.Point(other.x, other.y), false) >= 0);
@@ -99,12 +139,15 @@ function openCvDetect(source) {
       item.contour.delete();
     });
     alternate.forEach(item => item.contour.delete());
+    whiteCores.forEach(item => item.contour.delete());
     // Distance peaks provide a conservative split when erosion still leaves one blob.
     const distance = new cv.Mat(), peaks = new cv.Mat(), peakContours = new cv.MatVector(), peakHierarchy = new cv.Mat();
-    cv.distanceTransform(mask, distance, cv.DIST_L2, 5);
+    const distanceSource = whiteCoreCount >= 3 ? whiteMask : mask;
+    cv.distanceTransform(distanceSource, distance, cv.DIST_L2, 5);
     const maxDistance = cv.minMaxLoc(distance).maxVal;
     if (maxDistance > 8) {
-      cv.threshold(distance, peaks, Math.max(7, maxDistance * .42), 255, cv.THRESH_BINARY); peaks.convertTo(peaks, cv.CV_8U);
+      const peakThreshold = whiteCoreCount >= 3 ? Math.max(8, maxDistance * .34) : Math.max(7, maxDistance * .42);
+      cv.threshold(distance, peaks, peakThreshold, 255, cv.THRESH_BINARY); peaks.convertTo(peaks, cv.CV_8U);
       cv.findContours(peaks, peakContours, peakHierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
       for (let i = 0; i < peakContours.size(); i++) {
         const contour = peakContours.get(i), moments = cv.moments(contour);
@@ -114,9 +157,34 @@ function openCvDetect(source) {
     }
     [distance, peaks, peakContours, peakHierarchy].forEach(x => x.delete());
   } finally {
-    [mat, rgb, hsv, gray, enhanced, adaptive, bright, colorMask, mask, roiMask, ...cleanup].forEach(x => x.delete());
+    [mat, rgb, hsv, gray, enhanced, adaptive, bright, topHat, topHatMask, colorMask, neutralMask, whiteMask, mask, roiMask, blurred, circles, ...cleanup].forEach(x => x.delete());
   }
-  return candidates.filter((d, i, all) => all.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < Math.min(x.r, d.r) * .55) === i).slice(0, 100);
+  const unique = candidates.filter((d, i, all) => all.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < Math.min(x.r, d.r) * .55) === i);
+  // In a steel bowl, isolated circular highlights can pass the same shape
+  // checks as a tablet. A dense tablet pile has nearby centers; only apply
+  // this conservative rejection when enough white candidates exist so a
+  // sparse single-tablet photo still remains usable.
+  if (whiteCoreCount < 3 || unique.length < 8) return unique.slice(0, 100);
+  const visited = new Set(), clusters = [];
+  unique.forEach((seed, index) => {
+    if (visited.has(index)) return;
+    const queue = [index], cluster = [];
+    visited.add(index);
+    while (queue.length) {
+      const current = queue.shift();
+      cluster.push(current);
+      unique.forEach((candidate, candidateIndex) => {
+        if (!visited.has(candidateIndex) &&
+            Math.hypot(candidate.x - unique[current].x, candidate.y - unique[current].y) < 95) {
+          visited.add(candidateIndex);
+          queue.push(candidateIndex);
+        }
+      });
+    }
+    clusters.push(cluster);
+  });
+  const largest = clusters.sort((a, b) => b.length - a.length)[0] || [];
+  return largest.map(index => unique[index]).slice(0, 100);
 }
 async function loadOpenCV() { if (cvState.loaded) return; if (cvPromise) return cvPromise; cvPromise = new Promise(resolve => { const s = document.createElement('script'); s.src = 'https://docs.opencv.org/4.x/opencv.js'; s.async = true; s.onload = () => { const ready = () => { cvState.loaded = true; resolve(); }; if (window.cv && cv.Mat) ready(); else if (window.cv) cv.onRuntimeInitialized = ready; else resolve(); }; s.onerror = resolve; document.head.appendChild(s); }); return cvPromise; }
 async function analyze() { if (!image) return; snapshot(); await loadOpenCV(); try { detections = cvState.loaded ? openCvDetect(image) : colorFallback(image); } catch { detections = colorFallback(image); } draw(); $('#reanalyze').disabled = false; $('#save').disabled = false; $('#notice').hidden = false; $('#notice').textContent = '사진 속 밝은 색상과 모양을 기준으로 인식했습니다. 결과를 확인해 주세요.'; }
