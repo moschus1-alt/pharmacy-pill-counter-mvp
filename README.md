@@ -17,7 +17,7 @@ The image is decoded and analyzed in the browser and is not sent to a server. Im
 
 ## Detection and limits
 
-The browser detector uses OpenCV.js (loaded from the OpenCV CDN): grayscale local-contrast enhancement (CLAHE when available), yellow/color and low-saturation white-tablet masks, local top-hat contrast for stainless-steel reflections, two erosion strengths, contour/moment centers, optional circle proposals, dense-cluster filtering, and distance-transform peaks for conservative touching-pill splits. A fallback heuristic keeps the UI usable if the CDN is unavailable. Real-world performance depends on lighting, contrast, overlap, pill shape, and resolution. It does not identify medication, validate dosage, or replace a human check. Always verify every numbered overlay.
+The browser detector uses OpenCV.js (loaded from the OpenCV CDN): grayscale local-contrast enhancement (CLAHE when available), yellow and blue color masks, low-saturation white-tablet masks, local top-hat contrast for stainless-steel reflections, two erosion strengths, contour/moment centers, and distance-transform peaks for conservative touching-pill splits. A fallback heuristic keeps the UI usable if the CDN is unavailable. Real-world performance depends on lighting, contrast, overlap, pill shape, and resolution. It does not identify medication, validate dosage, or replace a human check. Always verify every numbered overlay.
 
 The synthetic browser fixture at `tests/synthetic-fixture.html` exercises five separated pills plus two touching pills and asserts that separated pills are found and the total stays within a conservative range.
 
