@@ -26,3 +26,16 @@ The synthetic browser fixture at `tests/synthetic-fixture.html` exercises five s
 - Camera capture is browser/file-input based; continuous camera streaming is not implemented.
 - Pinch zoom is represented by a review stage and can be extended with a gesture library; overlays are rendered at the image's fitted scale.
 - Optional production metrics can be added around detector timing/counts; no telemetry is sent by this build.
+
+## Developer test data and benchmark
+
+Phase 1 developer tools are available at `/annotation.html` and
+`/benchmark.html` when running Vite. The annotation page accepts a local image,
+supports click-to-add/delete center markers, and downloads verified ground-truth
+JSON; it never uploads imagery. The benchmark consumes the manifest format in
+`test-data/manifest.schema.json`, compares actual detector output to annotated
+centers (TP/FP/FN, center-distance matching, precision/recall/F1, exact count
+accuracy, MAE, and processing time), and draws TP/FP/FN overlays. Use the
+optional image-file picker when testing a manifest selected from disk. Keep
+private pharmacy images outside version control and do not infer accuracy from
+the schema-only example manifest.

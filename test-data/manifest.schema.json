@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pill counter benchmark manifest",
+  "type": "object",
+  "required": ["schemaVersion", "cases"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "matching": { "type": "object", "properties": { "centerDistancePx": { "type": "number", "exclusiveMinimum": 0 } } },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "image"],
+        "properties": {
+          "id": { "type": "string" },
+          "image": { "type": "string" },
+          "annotation": { "type": "string" },
+          "centers": { "type": "array", "items": { "type": "object", "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } } }
+        }
+      }
+    }
+  }
+}

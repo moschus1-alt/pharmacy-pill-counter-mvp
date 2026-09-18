@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "matching": { "centerDistancePx": 30 },
+  "cases": [
+    {
+      "id": "example-001",
+      "image": "images/example-001.jpg",
+      "annotation": "annotations/example-001.ground-truth.json"
+    }
+  ]
+}
