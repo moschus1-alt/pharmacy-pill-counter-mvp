@@ -17,7 +17,9 @@ The image is decoded and analyzed in the browser and is not sent to a server. Im
 
 ## Detection and limits
 
-The app exposes a detector-shaped flow ready for OpenCV.js (loaded from the OpenCV CDN). The MVP's dependable fallback uses a lightweight heuristic/demo detector so the UI works even if the CDN is unavailable. Real-world performance depends on lighting, contrast, overlap, pill shape, and resolution. It does not identify medication, validate dosage, or replace a human check. Always verify every numbered overlay.
+The browser detector uses OpenCV.js (loaded from the OpenCV CDN): grayscale local-contrast enhancement (CLAHE when available), adaptive and Otsu bright-pixel masks, inset ROI suppression, two erosion strengths, contour/moment centers, and distance-transform peaks for conservative touching-pill splits. A fallback heuristic keeps the UI usable if the CDN is unavailable. Real-world performance depends on lighting, contrast, overlap, pill shape, and resolution. It does not identify medication, validate dosage, or replace a human check. Always verify every numbered overlay.
+
+The synthetic browser fixture at `tests/synthetic-fixture.html` exercises five separated pills plus two touching pills and asserts that separated pills are found and the total stays within a conservative range.
 
 ## Current limits
 

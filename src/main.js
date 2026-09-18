@@ -38,18 +38,73 @@ function colorFallback(source) {
   return out.filter((d, i, a) => a.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < d.r * .7) === i).slice(0, 100);
 }
 function openCvDetect(source) {
-  const mat = cv.imread(source), rgb = new cv.Mat(), hsv = new cv.Mat(), lab = new cv.Mat(), mask = new cv.Mat(), hsvMask = new cv.Mat(), labMask = new cv.Mat(), contours = new cv.MatVector(), hierarchy = new cv.Mat();
-  cv.cvtColor(mat, rgb, cv.COLOR_RGBA2RGB); cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV); cv.cvtColor(rgb, lab, cv.COLOR_RGB2Lab);
-  const hLow = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [8, 18, 115, 0]), hHigh = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [45, 210, 255, 255]);
-  const lLow = new cv.Mat(lab.rows, lab.cols, lab.type(), [105, 125, 125, 0]), lHigh = new cv.Mat(lab.rows, lab.cols, lab.type(), [255, 175, 190, 255]);
-  cv.inRange(hsv, hLow, hHigh, hsvMask); cv.inRange(lab, lLow, lHigh, labMask); cv.bitwise_and(hsvMask, labMask, mask);
-  const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5)); cv.morphologyEx(mask, mask, cv.MORPH_OPEN, kernel); cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, kernel);
-  cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-  const minArea = Math.max(80, mat.cols * mat.rows * .00025), out = [];
-  for (let i = 0; i < contours.size(); i++) { const contour = contours.get(i), area = cv.contourArea(contour), rect = cv.boundingRect(contour), peri = cv.arcLength(contour, true), circularity = peri ? 4 * Math.PI * area / (peri * peri) : 0, ratio = Math.max(rect.width, rect.height) / Math.max(1, Math.min(rect.width, rect.height)); const m = cv.moments(contour);
-    if (area >= minArea && area < mat.cols * mat.rows * .08 && circularity > .28 && ratio < 2.5 && m.m00) out.push({ x: m.m10 / m.m00, y: m.m01 / m.m00, r: Math.max(8, Math.min(80, Math.max(rect.width, rect.height) / 2)) }); contour.delete();
+  const mat = cv.imread(source), gray = new cv.Mat(), enhanced = new cv.Mat();
+  const adaptive = new cv.Mat(), bright = new cv.Mat(), mask = new cv.Mat();
+  const roiMask = new cv.Mat(mat.rows, mat.cols, cv.CV_8UC1, new cv.Scalar(0));
+  const candidates = [], cleanup = [];
+  const minArea = Math.max(60, mat.cols * mat.rows * .00015), maxArea = mat.cols * mat.rows * .18;
+  try {
+    cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+    if (typeof cv.createCLAHE === 'function') {
+      const clahe = cv.createCLAHE(2.2, new cv.Size(8, 8));
+      clahe.apply(gray, enhanced); clahe.delete();
+    } else {
+      // Some compact OpenCV.js builds omit the CLAHE factory; keep the same
+      // local-contrast intent rather than disabling the detector entirely.
+      cv.equalizeHist(gray, enhanced);
+    }
+    cv.adaptiveThreshold(enhanced, adaptive, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, -3);
+    cv.threshold(enhanced, bright, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+    cv.bitwise_or(adaptive, bright, mask);
+    const inset = Math.max(4, Math.round(Math.min(mat.cols, mat.rows) * .025));
+    cv.rectangle(roiMask, new cv.Point(inset, inset), new cv.Point(mat.cols - inset, mat.rows - inset), new cv.Scalar(255), -1);
+    cv.bitwise_and(mask, roiMask, mask);
+    const closeKernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+    cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, closeKernel); cleanup.push(closeKernel);
+    const collect = (sourceMask, erosionSize) => {
+      const eroded = new cv.Mat(), contours = new cv.MatVector(), hierarchy = new cv.Mat();
+      const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(erosionSize, erosionSize));
+      cv.erode(sourceMask, eroded, kernel); cv.findContours(eroded, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      const found = [];
+      for (let i = 0; i < contours.size(); i++) {
+        const contour = contours.get(i), area = cv.contourArea(contour), rect = cv.boundingRect(contour);
+        const perimeter = cv.arcLength(contour, true), circularity = perimeter ? 4 * Math.PI * area / (perimeter * perimeter) : 0;
+        const ratio = Math.max(rect.width, rect.height) / Math.max(1, Math.min(rect.width, rect.height));
+        const moments = cv.moments(contour);
+        if (rect.x > 1 && rect.y > 1 && rect.x + rect.width < mat.cols - 1 && rect.y + rect.height < mat.rows - 1 &&
+            area >= minArea && area <= maxArea && circularity > .18 && ratio < 2.8 && moments.m00) {
+          found.push({ x: moments.m10 / moments.m00, y: moments.m01 / moments.m00, r: Math.max(7, Math.min(90, Math.max(rect.width, rect.height) / 2)), contour });
+        } else contour.delete();
+      }
+      [eroded, contours, hierarchy, kernel].forEach(x => x.delete()); return found;
+    };
+    const conservative = collect(mask, 3), alternate = collect(mask, 7);
+    // A broad contour containing two eroded centers is two touching pills, not one.
+    conservative.forEach(item => {
+      const inside = alternate.filter(other => cv.pointPolygonTest(item.contour, new cv.Point(other.x, other.y), false) >= 0);
+      if (inside.length >= 2) inside.forEach(other => candidates.push({ x: other.x, y: other.y, r: Math.max(7, item.r * .72) }));
+      else candidates.push({ x: item.x, y: item.y, r: item.r });
+      item.contour.delete();
+    });
+    alternate.forEach(item => item.contour.delete());
+    // Distance peaks provide a conservative split when erosion still leaves one blob.
+    const distance = new cv.Mat(), peaks = new cv.Mat(), peakContours = new cv.MatVector(), peakHierarchy = new cv.Mat();
+    cv.distanceTransform(mask, distance, cv.DIST_L2, 5);
+    const maxDistance = cv.minMaxLoc(distance).maxVal;
+    if (maxDistance > 8) {
+      cv.threshold(distance, peaks, Math.max(7, maxDistance * .42), 255, cv.THRESH_BINARY); peaks.convertTo(peaks, cv.CV_8U);
+      cv.findContours(peaks, peakContours, peakHierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      for (let i = 0; i < peakContours.size(); i++) {
+        const contour = peakContours.get(i), moments = cv.moments(contour);
+        if (moments.m00 && cv.contourArea(contour) > 3) candidates.push({ x: moments.m10 / moments.m00, y: moments.m01 / moments.m00, r: Math.max(7, maxDistance * .55) });
+        contour.delete();
+      }
+    }
+    [distance, peaks, peakContours, peakHierarchy].forEach(x => x.delete());
+  } finally {
+    [mat, gray, enhanced, adaptive, bright, mask, roiMask, ...cleanup].forEach(x => x.delete());
   }
-  [mat, rgb, hsv, lab, mask, hsvMask, labMask, contours, hierarchy, hLow, hHigh, lLow, lHigh, kernel].forEach(x => x.delete()); return out.filter((d, i, a) => a.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < d.r * .7) === i).slice(0, 100);
+  return candidates.filter((d, i, all) => all.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < Math.min(x.r, d.r) * .55) === i).slice(0, 100);
 }
 async function loadOpenCV() { if (cvState.loaded) return; if (cvPromise) return cvPromise; cvPromise = new Promise(resolve => { const s = document.createElement('script'); s.src = 'https://docs.opencv.org/4.x/opencv.js'; s.async = true; s.onload = () => { const ready = () => { cvState.loaded = true; resolve(); }; if (window.cv && cv.Mat) ready(); else if (window.cv) cv.onRuntimeInitialized = ready; else resolve(); }; s.onerror = resolve; document.head.appendChild(s); }); return cvPromise; }
 async function analyze() { if (!image) return; snapshot(); await loadOpenCV(); try { detections = cvState.loaded ? openCvDetect(image) : colorFallback(image); } catch { detections = colorFallback(image); } draw(); $('#reanalyze').disabled = false; $('#save').disabled = false; $('#notice').hidden = false; $('#notice').textContent = '사진 속 밝은 색상과 모양을 기준으로 인식했습니다. 결과를 확인해 주세요.'; }
@@ -62,3 +117,5 @@ $('#save').onclick = async () => { try { const db = await new Promise((res, rej)
 $('#stage').addEventListener('wheel', e => { if (!image) return; e.preventDefault(); zoom = Math.max(1, Math.min(2.5, zoom + (e.deltaY < 0 ? .1 : -.1))); $('#canvas').style.transform = `scale(${zoom})`; $('#zoom').textContent = `${Math.round(zoom * 100)}%`; }, { passive: false }); $('#stage').addEventListener('dblclick', () => { zoom = zoom === 1 ? 1.8 : 1; $('#canvas').style.transform = `scale(${zoom})`; $('#zoom').textContent = `${Math.round(zoom * 100)}%`; });
 $('#stage').addEventListener('click', e => { if (!image || e.target !== $('#canvas')) return; const rect = $('#canvas').getBoundingClientRect(), scale = $('#canvas').width / image.width, x = (e.clientX - rect.left) / scale, y = (e.clientY - rect.top) / scale, hit = detections.findIndex(d => Math.hypot(d.x - x, d.y - y) < Math.max(24, d.r * 1.5)); snapshot(); if (hit >= 0) detections.splice(hit, 1); else detections.push({ x, y, r: 20 }); draw(); });
 $('#help').onclick = () => $('#modal').hidden = false; $('#close').onclick = () => $('#modal').hidden = true; $('#privacy').onclick = e => { e.preventDefault(); $('#modal').hidden = false; }; $('#secure').textContent = location.protocol === 'https:' || location.hostname === 'localhost' ? '카메라를 사용할 수 있는 안전한 연결입니다.' : '카메라는 HTTPS 또는 localhost에서 사용할 수 있습니다.'; loadOpenCV(); if ('serviceWorker' in navigator) navigator.serviceWorker.register(new URL('sw.js', document.baseURI)).catch(() => {});
+// Kept small and non-invasive so a local browser fixture can exercise the real pipeline.
+window.__pillCounterTest = { detect: source => cvState.loaded ? openCvDetect(source) : colorFallback(source) };

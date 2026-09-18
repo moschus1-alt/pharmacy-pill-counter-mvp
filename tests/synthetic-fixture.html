@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pill detector synthetic fixture</title>
+<div id="app"></div>
+<script type="module">
+  import '../src/main.js';
+  const canvas = document.createElement('canvas');
+  canvas.width = 640; canvas.height = 360;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#667078'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#f5e4a4';
+  [[100,100],[260,100],[420,100],[540,260],[480,260]].forEach(([x,y]) => {
+    ctx.beginPath(); ctx.ellipse(x, y, 32, 24, 0, 0, Math.PI * 2); ctx.fill();
+  });
+  // Two touching pills are deliberately joined to verify the conservative split.
+  ctx.beginPath(); ctx.ellipse(260,260,34,25,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(310,260,34,25,0,0,Math.PI*2); ctx.fill();
+  const result = document.createElement('pre'); document.body.append(result);
+  await new Promise(resolve => {
+    const wait = () => window.cv && window.cv.Mat && window.__pillCounterTest ? resolve() : setTimeout(wait, 100);
+    wait();
+  });
+  const detections = window.__pillCounterTest.detect(canvas);
+  const separated = [[100,100],[260,100],[420,100],[540,260],[480,260]]
+    .every(([x,y]) => detections.some(d => Math.hypot(d.x-x,d.y-y) < 30));
+  const report = { detected: detections.length, separatedPillsFound: separated, touchingPillsReasonable: detections.length >= 5 && detections.length <= 8 };
+  result.textContent = JSON.stringify(report);
+  if (!report.separatedPillsFound || !report.touchingPillsReasonable) throw new Error(`Fixture failed: ${result.textContent}`);
+</script>
