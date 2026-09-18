@@ -1,4 +1,4 @@
-const CACHE="pillcount-v1";
+const CACHE="pillcount-v2";
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(["./","./index.html"])));
 });
