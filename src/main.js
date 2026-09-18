@@ -38,12 +38,14 @@ function colorFallback(source) {
   return out.filter((d, i, a) => a.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < d.r * .7) === i).slice(0, 100);
 }
 function openCvDetect(source) {
-  const mat = cv.imread(source), gray = new cv.Mat(), enhanced = new cv.Mat();
-  const adaptive = new cv.Mat(), bright = new cv.Mat(), mask = new cv.Mat();
+  const mat = cv.imread(source), rgb = new cv.Mat(), hsv = new cv.Mat(), gray = new cv.Mat(), enhanced = new cv.Mat();
+  const adaptive = new cv.Mat(), bright = new cv.Mat(), colorMask = new cv.Mat(), mask = new cv.Mat();
   const roiMask = new cv.Mat(mat.rows, mat.cols, cv.CV_8UC1, new cv.Scalar(0));
   const candidates = [], cleanup = [];
   const minArea = Math.max(60, mat.cols * mat.rows * .00015), maxArea = mat.cols * mat.rows * .18;
   try {
+    cv.cvtColor(mat, rgb, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
     cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
     if (typeof cv.createCLAHE === 'function') {
       const clahe = cv.createCLAHE(2.2, new cv.Size(8, 8));
@@ -56,6 +58,16 @@ function openCvDetect(source) {
     cv.adaptiveThreshold(enhanced, adaptive, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, -3);
     cv.threshold(enhanced, bright, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
     cv.bitwise_or(adaptive, bright, mask);
+    // Pale yellow tablets need color separation: a white tray and its
+    // reflections can be brighter than the tablets but lack this hue band.
+    const colorLow = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [12, 18, 70, 0]);
+    const colorHigh = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [48, 235, 255, 255]);
+    cv.inRange(hsv, colorLow, colorHigh, colorMask);
+    // Use the color mask as the primary foreground. Adaptive brightness is
+    // useful for pale tablets, but intersecting it can erase yellow tablets
+    // on a light tray before contours are even extracted.
+    colorMask.copyTo(mask);
+    colorLow.delete(); colorHigh.delete();
     const inset = Math.max(4, Math.round(Math.min(mat.cols, mat.rows) * .025));
     cv.rectangle(roiMask, new cv.Point(inset, inset), new cv.Point(mat.cols - inset, mat.rows - inset), new cv.Scalar(255), -1);
     cv.bitwise_and(mask, roiMask, mask);
@@ -102,7 +114,7 @@ function openCvDetect(source) {
     }
     [distance, peaks, peakContours, peakHierarchy].forEach(x => x.delete());
   } finally {
-    [mat, gray, enhanced, adaptive, bright, mask, roiMask, ...cleanup].forEach(x => x.delete());
+    [mat, rgb, hsv, gray, enhanced, adaptive, bright, colorMask, mask, roiMask, ...cleanup].forEach(x => x.delete());
   }
   return candidates.filter((d, i, all) => all.findIndex(x => Math.hypot(x.x - d.x, x.y - d.y) < Math.min(x.r, d.r) * .55) === i).slice(0, 100);
 }
