@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
+import {mkdir} from 'node:fs/promises';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const base='https://pharmacy-pill-counter-mvp.vercel.app';
+const browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
+const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const page=await context.newPage(),errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+try{
+ const response=await page.goto(base+'/?test',{waitUntil:'networkidle'});assert.equal(response.status(),200);
+ assert(await page.locator('#camera-open').isVisible());assert(await page.locator('#upload').isVisible());
+ const module=await context.request.get(base+'/src/camera-frame.js');assert.equal(module.status(),200);assert((await module.text()).includes('captureCameraFrame'));
+ const health=await context.request.get(base+'/api/analyze');assert.equal(health.status(),200);
+ const prediction=page.waitForResponse(r=>r.url().endsWith('/api/analyze')&&r.request().method()==='POST',{timeout:120000});
+ await page.locator('#file-input').setInputFiles(fileURLToPath(new URL('../examples/mediseg-8-pills.png',import.meta.url)));
+ const result=await prediction;assert.equal(result.status(),200);
+ await page.waitForFunction(()=>window.__pillCounterTest.state().analyzed&&!window.__pillCounterTest.state().busy,{},{timeout:10000});
+ const state=await page.evaluate(()=>window.__pillCounterTest.state());assert.equal(state.count,8);
+ assert.deepEqual(errors,[]);
+ const output=fileURLToPath(new URL('../.test-results/',import.meta.url));await mkdir(output,{recursive:true});
+ await page.screenshot({path:output+'production-result.png',fullPage:true});
+ console.log(JSON.stringify({url:base,count:state.count,processingTimeMs:state.analysis.processingTimeMs,apiStatus:result.status(),browserErrors:errors,sourceModuleStatus:module.status()}));
+}finally{await browser.close();}

@@ -1,51 +1,8 @@
-모델·런타임 라이선스 및 고정 버전 근거 (2026-10-18)
+현재 서버 분석기는 비공개 TFLite 모델을 사용합니다.
+모델 식별값(SHA-256): 967308748ace08b219acb3913de40feac92fe71e1864892386b9475923a1275b
+재배포 허가를 확인하지 못했습니다. 모델은 서버 함수 내부에만 포함되며 별도 다운로드 경로는 제공하지 않습니다.
 
-1. 적용 모델: DanteLiu/deimv2-x-pill-android
-저자: Tsung-Han Liu / RevelioRX (2026)
-원문: https://huggingface.co/DanteLiu/deimv2-x-pill-android
-고정 리비전: 8212a9edf5b2254bf86307f02abd333d725e16a3
-게시자의 모델 라이선스: Apache-2.0. model-card.md, model-revision-evidence.json 참조.
-수정: 제공된 fp16 ONNX의 텐서 및 입출력을 fp32로 변환하여 브라우저 WASM에서 실행.
-학습·가중치 미세조정 없음. 기본 신뢰도 0.50, pill 클래스 0만 계수, needle 클래스는 제외.
-원본/변환 SHA256 및 변환 대조 결과: ../models/model-info.json, conversion-check.json
-원본 모델 공개 2026-03-09, 마지막 수정 2026-03-11.
+선택한 사진은 분석 요청에 사용되며 저장하지 않습니다. 서버는 사진 분석 후 결과만 반환합니다.
+자동 분석 수량은 실제 알약 수와 대조해 확인해 주세요.
 
-2. 기반 DEIMv2의 라이선스 이력
-가중치 공개 당시 프로젝트 커밋: 8241e8d79fd1225694445aec347fa39c708cc7e8 (2026-01-07)
-당시 원문: https://raw.githubusercontent.com/Intellindust-AI-Lab/DEIMv2/8241e8d79fd1225694445aec347fa39c708cc7e8/LICENSE
-당시 Apache-2.0 전문 및 저작권 고지: DEIMv2-at-model-release-Apache-2.0.txt
-상위 프로젝트는 2026-08-24에 새 버전 라이선스를 비상업용으로 변경했음.
-변경 커밋: bb64e5e1ede52479dcbf8e53ad0586d2131fe0a3
-보존 근거: DEIMv2-license-change-evidence.json
-이 앱은 변경 전 공개된 3월 모델을 버전/해시로 고정하며 현재 상위 프로젝트의 새 코드나 새 가중치를 사용하지 않음.
-새 상위 버전으로 자동 갱신해서는 안 됨. 해당 새 버전의 상업 이용 허가를 주장하지 않음.
-
-3. DINOv3 기반 모델 조건 (Apache-2.0만으로 설명하면 안 됨)
-DINOv3 License 전문: DINOv3-LICENSE.txt
-원문: https://github.com/facebookresearch/dinov3/blob/main/LICENSE.md
-Meta가 사용, 복제, 수정, 파생물 작성 및 배포 권리를 조건부로 허용함.
-배포 시 이 계약문을 동봉하고, 연구 결과 발표 시 DINOv3 사용을 인정해야 함.
-법률·수출통제·개인정보 조건과 역공학 제한 등 계약의 전체 조건을 따라야 함.
-따라서 전체 모델을 아무 조건 없는 Apache 단독 라이선스로 표시하지 않음.
-
-인용
-Tsung-Han Liu, RevelioRX: DEIMv2-X Pill and Needle Detector, 2026.
-DEIMv2: Real-Time Object Detection Meets DINOv3.
-DINOv3 by Meta.
-
-4. ONNX Runtime Web 1.30.0
-Copyright (c) Microsoft Corporation. All rights reserved.
-MIT 전문: ONNX-Runtime-MIT.txt. 해당 v1.30.0 제3자 고지: ONNX-ThirdPartyNotices.txt.
-OpenCV 4.9.0: ../vendor/LICENSE-OpenCV.txt.
-
-5. 평가 자료
-MEDISEG 및 MEDISEG-Deploy: CC BY 4.0, William Chu / Wai Ip Chu 및 공동 저자.
-https://city.figshare.com/articles/dataset/MEDISEG/28574786
-Chu et al., A dataset of medication images with instance segmentation masks for preventing adverse drug events, 2026, arXiv:2603.10825.
-Chu et al., Evaluating Few-Shot Pill Recognition Under Visual Domain Shift, 2026, arXiv:2603.10833.
-평가 사진은 재배포하지 않으며, CC BY 4.0으로 허용된 8개 알약 예제 한 장만 출처·변경 내역과 함께 examples/에 동봉함.
-기존 공개 test/val 비교 자료의 출처와 제한은 AI-비교보고서.txt 참조.
-
-Pillens 가중치나 디컴파일 코드는 이 앱에 포함하지 않음.
-모든 학습 데이터의 권리 관계를 별도로 감사한 것은 아니며 게시된 모델 사용 조건과 기반 버전의 근거를 보존함.
-
+공개 평가 사진의 라이선스와 출처는 examples/출처.txt 및 MEDISEG-CC-BY-4.0.txt를 확인하세요.

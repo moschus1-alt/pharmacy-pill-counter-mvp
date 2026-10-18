@@ -1,0 +1,15 @@
+{
+  "profile": "Android saved-image resize alignment",
+  "configSource": "observed model configuration",
+  "configObservedDate": "2026-10-18",
+  "modelVersionReportedByConfig": "251028_v1",
+  "confidence": 0.5,
+  "iou": 0.6,
+  "v_threshold": 255,
+  "decodedMaxImageSide": 2048,
+  "decodeColorSpace": "sRGB",
+  "preprocess": "RGB float32 / 255, NHWC; black center square padding; Skia scanline nearest to 832, verified against seven saved Android tensors",
+  "decode": "5 channel normalized coordinates; original conditional xyxy-to-cxcywh fallback",
+  "postprocess": "stable descending confidence, class-agnostic greedy NMS, union <= 1e-6 gives IoU zero, strictly IoU > threshold suppressed, maximum 1000 before clipping, score inclusive",
+  "scope": "Photo detector with no ROI. Camera ROI filtering supported when explicitly supplied. No phone runtime equivalence claim. Current public config is not historical proof of every installation's settings."
+}

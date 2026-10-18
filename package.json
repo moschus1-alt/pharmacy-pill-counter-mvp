@@ -1,7 +1,8 @@
 {
   "name": "pharmacy-pill-counter",
-  "version": "0.3.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
-  "scripts": {"build": "node build.mjs", "start": "node server.mjs"}
+  "scripts": {"build": "node build.mjs", "test:camera": "node checks/mobile-camera.mjs"},
+  "devDependencies": {"playwright": "1.62.1"}
 }

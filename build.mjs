@@ -1,6 +1,9 @@
-import {cp,mkdir} from 'node:fs/promises';
+import {cp,mkdir,rm} from 'node:fs/promises';
+import {dirname} from 'node:path';
+await rm('dist',{recursive:true,force:true});
 await mkdir('dist',{recursive:true});
-for(const path of ['index.html','style.css','benchmark.html','src','vendor','models','examples','licenses','AI-비교보고서.txt','DEIM-개선-간단시험.txt']){
+for(const path of ['index.html','style.css','src/app.js','src/image-detector.js','src/camera-frame.js','examples','licenses']){
+ await mkdir(dirname(`dist/${path}`),{recursive:true});
  await cp(path,`dist/${path}`,{recursive:true});
 }
-console.log('Static browser app built. Photos are processed on the device.');
+console.log('Static UI built; private model is only included in the Python function.');

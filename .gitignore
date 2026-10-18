@@ -6,6 +6,11 @@ node_modules/
 *.apk
 *.xapk
 *.tflite
+private-model/*
+!private-model/preprocess-profile.json
+.test-results/
+__pycache__/
+*.pyc
 
 .vercel
 .env*

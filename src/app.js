@@ -1,152 +1,323 @@
-import {OpenCVDetector} from './detector.js';
-import {AIDetector} from './ai-detector.js';
+import {PillDetector} from './image-detector.js';
+import {CAMERA_ASPECT_RATIO,cameraConstraints,captureCameraFrame as captureToFrame} from './camera-frame.js';
+document.documentElement.style.setProperty('--camera-aspect',String(CAMERA_ASPECT_RATIO));
 const $=id=>document.getElementById(id);
-const cvDetector=new OpenCVDetector(),aiDetector=new AIDetector();
-const detector={cancel(){cvDetector.cancel();aiDetector.cancel();}};
-const source=document.createElement('canvas'),canvas=$('canvas'),ctx=canvas.getContext('2d');
-// Send the same 640x640 resampling to the worker without a full-size RGBA transfer.
-const aiInput=document.createElement('canvas');aiInput.width=aiInput.height=640;
-const aiInputContext=aiInput.getContext('2d',{willReadFrequently:true});
-function readAIInput(){
- aiInputContext.imageSmoothingEnabled=true;aiInputContext.imageSmoothingQuality='low';
- aiInputContext.clearRect(0,0,640,640);aiInputContext.drawImage(source,0,0,640,640);
- return aiInputContext.getImageData(0,0,640,640);
-}
-let loaded=false,objects=[],automaticCount=0,undoStack=[],redoStack=[],mode='view',zoom=1,scale=1,busy=false,sequence=0,imageRequest=0,sample=false,analysis=null,confirmed=false,filename='',manualId=0;
+const detector=new PillDetector();
+const source=document.createElement('canvas');
+const canvas=$('canvas'),ctx=canvas.getContext('2d'),video=$('video');
+let loaded=false,analyzed=false,manualEdited=false,busy=false,objects=[],undoStack=[],mode='view',zoom=1,scale=1;
+let sequence=0,imageRequest=0,originalFile=null,confirmed=false,saving=false,analysis=null;
+let currentTab='photo',stream=null,starting=false,liveSession=0,liveTimer=null,liveAgeTimer=null,liveCount=null,liveAt=0,liveErrors=0;
+let captureMode=false,captureStream=null,captureStarting=false,captureGeneration=0,captureNotice='알약을 모두 화면에 담아 주세요.';
+let saveGeneration=0,saveURL=null,saveFile=null;
+let renderedObjects=null,renderedLength=-1;
 const clone=()=>structuredClone(objects);
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
-function invalidate(){confirmed=false;$('verified').checked=false;$('confirmation').textContent='';$('export').disabled=true;}
+function setStatus(text,kind=''){$('status').textContent=text;$('status').className=`status ${kind}`;}
+function invalidate(){confirmed=false;$('confirmation').textContent='';}
 function update(){
- $('count').value=loaded?String(objects.length):'—';
- const additions=objects.filter(o=>o.source==='manual').length,removed=automaticCount-objects.filter(o=>o.source!=='manual').length;
- $('count-meta').textContent=loaded?`${sample?'예제 · ':''}자동 ${automaticCount}개${additions?` · 추가 ${additions}개`:''}${removed?` · 삭제 ${removed}개`:''}${analysis?` · ${(analysis.processingTimeMs/1000).toFixed(1)}초`:''}`:'사진을 선택해 시작하세요';
- const target=targetCount(),diff=objects.length-target;
- $('difference').classList.toggle('match',loaded&&target>0&&diff===0);
- $('difference').textContent=$('target').value!==''&&target===null?'목표는 1~9999 사이의 정수로 입력해 주세요.':loaded&&target>0?(diff===0?'목표와 수량이 같습니다. 번호도 직접 확인하세요.':`목표 ${target}개보다 ${Math.abs(diff)}개 ${diff>0?'많습니다':'적습니다'}.`):'목표 수량에 맞춰 검출 수를 바꾸지 않습니다.';
- for(const id of ['replace','zoom-in','zoom-out','zoom-reset','reanalyze','verified','compare'])$(id).disabled=!loaded||busy;
- $('engine').disabled=busy;$('confidence').disabled=busy;
- $('suppress-containers').disabled=busy||$('engine').value!=='ai';
- $('undo').disabled=!undoStack.length||busy;$('redo').disabled=!redoStack.length||busy;
- $('complete').disabled=!loaded||busy||!$('verified').checked||confirmed;
- for(const button of document.querySelectorAll('[data-mode]')){button.disabled=busy||(button.dataset.mode!=='view'&&!loaded);button.classList.toggle('active',button.dataset.mode===mode);button.setAttribute('aria-pressed',String(button.dataset.mode===mode));}
+ const live=currentTab==='live';
+ const inCapture=captureMode&&!live;
+ document.querySelector('.header').hidden=inCapture;document.querySelector('.tabs').hidden=inCapture;document.querySelector('.counter').hidden=inCapture;document.querySelector('footer').hidden=inCapture;
+ $('photo-tab').classList.toggle('selected',!live);$('photo-tab').setAttribute('aria-pressed',String(!live));
+ $('live-tab').classList.toggle('selected',live);$('live-tab').setAttribute('aria-pressed',String(live));
+ $('photo-panel').hidden=live||inCapture;$('capture-panel').hidden=!inCapture;$('live-panel').hidden=!live;
+ $('count-label').textContent=live?'최근 화면의 알약':'사진 속 알약';
+ $('count').value=live?(liveCount===null?'—':String(liveCount)):(loaded&&(analyzed||manualEdited)?String(objects.length):'—');
+ if(live){
+  setStatus(starting?'카메라 여는 중':stream?'실시간':liveCount===null?'시작 전':'중지됨',stream?'active':'');
+  $('count-meta').textContent=liveCount===null?(starting?'카메라를 연결하고 있어요':stream?'첫 화면을 분석하고 있어요':'카메라 연결을 기다리고 있어요'):(stream?'주기적으로 수량을 갱신해요':'마지막 분석 수량');
+ }else{
+  setStatus(busy?'분석 중':confirmed?'확인 완료':analyzed?'확인해 주세요':loaded?'분석 필요':'시작 전',confirmed?'active':'');
+  $('count-meta').textContent=busy?'잠시만 기다려 주세요':confirmed?'직접 확인한 수량입니다':analyzed?'사진의 번호와 대조해 주세요':loaded?'다시 세기를 눌러 주세요':'사진을 찍거나 선택해 주세요';
+ }
+ $('dropzone').hidden=!loaded;$('empty').hidden=loaded;$('stage').hidden=!loaded;$('busy').hidden=!busy;
+ $('image-tools').hidden=!loaded;$('result-actions').hidden=!loaded;$('home-camera-action').hidden=loaded;
+ for(const id of ['reanalyze','save-photo','zoom-in','zoom-out','zoom-reset','upload','camera-open'])$(id).disabled=busy;
+ $('camera-placeholder').hidden=!!captureStream;
+ $('capture-status').textContent=captureStarting?'카메라를 연결하고 있어요…':captureStream?captureNotice:'카메라 권한을 허용해 주세요.';
+ $('camera-placeholder').querySelector('strong').textContent=captureStarting?'카메라를 연결하고 있어요':captureNotice;
+ $('camera-placeholder').querySelector('p').textContent=captureStarting?'잠시만 기다려 주세요':'카메라 권한을 허용해 주세요.';
+ $('shutter').disabled=!captureStream||$('capture-video').readyState<2;
+ $('confirm').disabled=busy||!loaded||(!analyzed&&!manualEdited)||confirmed;
+ $('confirm').textContent=confirmed?'확인했어요':'확인 완료';$('undo').disabled=busy||!undoStack.length;
+ for(const b of document.querySelectorAll('[data-mode]')){b.disabled=busy;b.classList.toggle('selected',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));}
  $('stage').classList.toggle('editing',mode!=='view');
- $('canvas-hint').textContent=!loaded?'사진을 선택하면 번호가 여기에 표시됩니다.':mode==='add'?'빠진 알약의 중심을 터치하면 번호가 추가됩니다.':mode==='remove'?'삭제할 번호 가까이를 터치하세요.':'번호를 하나씩 확인하세요. 확대 후 화면을 스크롤할 수 있습니다.';
+ $('canvas-hint').textContent=mode==='add'?'빠진 알약의 중심을 터치하세요':mode==='remove'?'지울 번호를 터치하세요':'번호를 하나씩 확인해 주세요';
+ $('live-capture').hidden=!stream;$('live-capture').disabled=starting||video.readyState<2;
+ $('live-stop').hidden=!stream&&!starting;$('live-empty').hidden=!!stream;$('live-badge').hidden=!stream;
+ if(starting){$('live-empty').querySelector('h1').textContent='카메라를 연결하고 있어요';$('live-empty').querySelector('p').textContent='잠시만 기다려 주세요.';}
+ else{$('live-empty').querySelector('h1').textContent='카메라를 비추면 바로 셉니다';$('live-empty').querySelector('p').innerHTML='알약을 모두 화면에 담고<br>휴대폰을 잠시 고정해 주세요.';}
 }
-function targetCount(){const n=Number($('target').value);return Number.isInteger(n)&&n>=1&&n<=9999?n:null;}
-function readingOrder(items){
- const radii=items.map(o=>o.r).sort((a,b)=>a-b),tolerance=Math.max(4,(radii[Math.floor(radii.length/2)]||10)*.8);
- const rows=[];
- for(const o of [...items].sort((a,b)=>a.y-b.y)){let row=rows.at(-1);if(!row||o.y-row.y>tolerance){row={y:o.y,items:[]};rows.push(row);}row.items.push(o);}
- return rows.flatMap(row=>row.items.sort((a,b)=>a.x-b.x));
-}
-function saveUndo(){undoStack.push(clone());if(undoStack.length>60)undoStack.shift();redoStack=[];invalidate();}
 function fit(){
- if(!loaded)return;
- const stage=$('stage');const base=Math.min(stage.clientWidth/source.width,stage.clientHeight/source.height);
- scale=base*zoom;
- canvas.width=source.width;canvas.height=source.height;
- canvas.style.width=`${source.width*scale}px`;canvas.style.height=`${source.height*scale}px`;
- $('zoom-value').value=`${Math.round(zoom*100)}%`;draw();
+ if(!loaded||currentTab!=='photo')return;
+ const stage=$('stage');scale=Math.max(.01,Math.min(stage.clientWidth/source.width,stage.clientHeight/source.height)*zoom);
+ canvas.width=source.width;canvas.height=source.height;canvas.style.width=`${source.width*scale}px`;canvas.style.height=`${source.height*scale}px`;draw();
 }
+function markers(context,items,radius){
+ items.forEach((o,i)=>{
+  context.beginPath();context.arc(o.x,o.y,radius,0,Math.PI*2);context.fillStyle=o.source==='manual'?'#306ec8':'#087961';context.fill();
+  context.strokeStyle='#fff';context.lineWidth=radius*.13;context.stroke();context.fillStyle='#fff';context.font=`700 ${radius*(i>=99?.88:1.05)}px system-ui`;
+  context.textAlign='center';context.textBaseline='middle';context.fillText(String(i+1),o.x,o.y+radius*.03);
+ });
+}
+function viewportZoom(){return Math.max(1,window.visualViewport?.scale||1);}
 function draw(){
  if(!loaded)return;
  ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(source,0,0);
- const markerRadius=11/scale;
- objects.forEach((o,i)=>{
-  const color=o.source==='manual'?'#397dce':o.needsReview?'#d58c20':'#138c76';
-  if(o.contour?.length){ctx.beginPath();o.contour.forEach(([x,y],j)=>j?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.strokeStyle=color;ctx.fillStyle=color+'24';ctx.lineWidth=1.5/scale;ctx.fill();ctx.stroke();}
-  ctx.beginPath();ctx.arc(o.x,o.y,markerRadius,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=1.3/scale;ctx.stroke();
-  ctx.fillStyle='white';ctx.font=`600 ${11/scale}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),o.x,o.y+.4/scale);
- });
+ // Separate labels from the photo raster: image zoom cannot enlarge or blur them.
+ const overlay=$('markers');overlay.style.setProperty('--inverse-pinch',String(1/viewportZoom()));
+ if(renderedObjects!==objects||renderedLength!==objects.length){
+  overlay.replaceChildren(...objects.map((o,i)=>{
+   const marker=document.createElement('span');marker.className=`marker${o.source==='manual'?' manual':''}${i>=99?' wide':''}`;
+   marker.textContent=String(i+1);marker.style.left=`${o.x/source.width*100}%`;marker.style.top=`${o.y/source.height*100}%`;return marker;
+  }));
+  renderedObjects=objects;renderedLength=objects.length;
+ }
 }
-function setBusy(value){busy=value;$('busy').hidden=!value;if(value)$('busy-text').textContent='사진을 분석하고 있습니다…';for(const id of ['camera','upload','demo','real-demo'])$(id).disabled=value;update();}
-async function analyze(){
+function readingOrder(items){
+ const radii=items.map(o=>o.r).sort((a,b)=>a-b),tolerance=Math.max(4,(radii[Math.floor(radii.length/2)]||10)*.8),rows=[];
+ for(const o of [...items].sort((a,b)=>a.y-b.y)){let row=rows.at(-1);if(!row||o.y-row.y>tolerance){row={y:o.y,items:[]};rows.push(row);}row.items.push(o);}
+ return rows.flatMap(row=>row.items.sort((a,b)=>a.x-b.x));
+}
+function captureTo(target,image,maxSide=2048){
+ const width=image.videoWidth||image.naturalWidth||image.width,height=image.videoHeight||image.naturalHeight||image.height;
+ if(!width||!height)throw Error('카메라 화면이 준비되지 않았습니다. 잠시 후 다시 눌러 주세요.');
+ const ratio=Math.min(1,maxSide/Math.max(width,height));target.width=Math.max(1,Math.round(width*ratio));target.height=Math.max(1,Math.round(height*ratio));
+ target.getContext('2d').drawImage(image,0,0,target.width,target.height);
+}
+function stopAnalysis(){sequence++;detector.cancel();busy=false;}
+async function analyze(focusCount=false){
  if(!loaded)return;
- const request=++sequence;setBusy(true);message('');
+ stopAnalysis();const request=sequence;busy=true;analyzed=false;manualEdited=false;objects=[];undoStack=[];analysis=null;invalidate();message('');update();draw();
  try{
-  const engine=$('engine').value,isAI=engine==='ai';
-  const imageData=isAI?readAIInput():source.getContext('2d').getImageData(0,0,source.width,source.height);
-  const result=await (isAI?aiDetector:cvDetector).analyze(imageData,{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked,confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height},text=>{$('busy-text').textContent=text;});
-  if(request!==sequence)return;
-  analysis=result;objects=readingOrder(result.objects);automaticCount=objects.length;undoStack=[];redoStack=[];invalidate();
-  message((sample?'예제는 실제 수량 30개인 합성 이미지이며 AI의 실사진 성능을 입증하지 않습니다.\n':'')+result.warnings.join('\n'));
-  $('result-engine').textContent=isAI?'AI · DEIMv2-X':'OpenCV';
- }catch(error){if(request===sequence)message(`${error.message} 누락 추가 모드로 직접 표시할 수 있습니다.`,true);}
- finally{if(request===sequence){setBusy(false);fit();}}
+  const result=await detector.analyze(source.getContext('2d').getImageData(0,0,source.width,source.height),{confidence:.5},text=>{if(request===sequence)$('busy-text').textContent=text;});
+  if(request!==sequence)return;analysis=result;objects=readingOrder(result.objects);analyzed=true;
+  if(!objects.length)message('알약을 찾지 못했어요. 밝기와 거리를 바꾸거나 직접 추가해 주세요.');
+ }catch(error){if(request===sequence)message(`${error.message} 다시 세거나 직접 추가할 수 있어요.`,true);}
+ finally{if(request===sequence){busy=false;update();fit();if(focusCount)requestAnimationFrame(()=>document.querySelector('.counter').scrollIntoView({behavior:'smooth',block:'start'}));}}
 }
-function loadImage(image,name,isSample=false){
- detector.cancel();sequence++;loaded=true;sample=isSample;filename=name;zoom=1;mode='view';analysis=null;objects=[];automaticCount=0;undoStack=[];redoStack=[];invalidate();$('comparison').textContent='';
- const maxSide=1280;
- const ratio=Math.min(1,maxSide/Math.max(image.width,image.height));source.width=Math.round(image.width*ratio);source.height=Math.round(image.height*ratio);
- source.getContext('2d').drawImage(image,0,0,source.width,source.height);
- $('empty').hidden=true;$('stage').hidden=false;fit();analyze();
+function loadImage(image,file=null,{focusCount=false}={}){
+ captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();currentTab='photo';captureTo(source,image);originalFile=file;
+ $('dropzone').classList.toggle('camera-result',file===null);
+ loaded=true;analyzed=false;manualEdited=false;objects=[];undoStack=[];mode='view';zoom=1;analysis=null;invalidate();update();fit();void analyze(focusCount);
 }
-async function fileSelected(file){
- if(!file)return;const request=++imageRequest;if(!/^image\//.test(file.type)){message('JPG, PNG, WebP 등 이미지 파일을 선택해 주세요.',true);return;}
- if(file.size>35*1024*1024){message('사진은 35MB 이하로 선택해 주세요.',true);return;}
+async function fileSelected(file,{focusCount=false}={}){
+ if(!file)return;const request=++imageRequest;
+ if(file.type&&!file.type.startsWith('image/')){message('사진 파일을 선택해 주세요.',true);return;}
+ if(file.size>35*1024*1024){message('35MB 이하의 사진을 선택해 주세요.',true);return;}
  const url=URL.createObjectURL(file),image=new Image();
- image.onload=()=>{URL.revokeObjectURL(url);if(request!==imageRequest)return;if(image.width*image.height>80000000){message('사진 해상도가 너무 큽니다. 축소한 사진을 선택해 주세요.',true);return;}loadImage(image,file.name);};
- image.onerror=()=>{URL.revokeObjectURL(url);if(request===imageRequest)message('이 사진을 읽을 수 없습니다. JPG 또는 PNG로 변환해 주세요.',true);};image.src=url;
+ try{image.src=url;await image.decode();if(request!==imageRequest)return;if(image.naturalWidth*image.naturalHeight>80000000)throw Error('oversized');loadImage(image,file,{focusCount});}
+ catch{if(request===imageRequest)message('사진을 읽을 수 없어요. 해상도를 줄이거나 JPG·PNG 사진을 선택해 주세요.',true);}
+ finally{URL.revokeObjectURL(url);}
 }
-function demo(){
- imageRequest++;
- const demoCanvas=document.createElement('canvas');demoCanvas.width=1000;demoCanvas.height=700;const c=demoCanvas.getContext('2d');
- c.fillStyle='#304c51';c.fillRect(0,0,1000,700);
- for(let row=0;row<5;row++)for(let col=0;col<6;col++){
-  const x=112+col*155+(row%2)*7,y=100+row*125;
-  c.save();c.translate(x,y);c.rotate(((row+col)%3-1)*.24);c.fillStyle=(row+col)%3===0?'#efd9a0':'#f3f2e8';c.beginPath();c.ellipse(0,0,33,23,0,0,Math.PI*2);c.fill();c.restore();
- }loadImage(demoCanvas,'합성 알약 30개',true);
+function stopLive(){
+ liveSession++;clearTimeout(liveTimer);clearInterval(liveAgeTimer);liveTimer=null;liveAgeTimer=null;starting=false;
+ if(stream)stream.getTracks().forEach(track=>track.stop());stream=null;video.srcObject=null;detector.cancel();
 }
-$('upload').onclick=$('replace').onclick=()=>$('file-input').click();$('camera').onclick=()=>$('camera-input').click();
-for(const id of ['file-input','camera-input'])$(id).onchange=e=>{fileSelected(e.target.files[0]);e.target.value='';};
-$('demo').onclick=demo;$('reanalyze').onclick=()=>{if(undoStack.length&&!window.confirm('현재 수동 수정을 초기화하고 다시 분석할까요?'))return;analyze();};
-$('real-demo').onclick=async()=>{const request=++imageRequest;try{const response=await fetch('examples/mediseg-8-pills.png');if(!response.ok)throw Error('공개 예제 사진을 읽지 못했습니다.');const blob=await response.blob();if(request!==imageRequest)return;fileSelected(new File([blob],'MEDISEG-Deploy 공개 실사진 · 정답 8개.png',{type:'image/png'}));}catch(error){if(request===imageRequest)message(error.message,true);}};
-$('confidence').oninput=()=>$('confidence-value').value=(Number($('confidence').value)/100).toFixed(2);
-const engineConfidence={ai:50,opencv:50};let previousEngine='ai';
-$('engine').onchange=()=>{
- engineConfidence[previousEngine]=Number($('confidence').value);previousEngine=$('engine').value;
- $('confidence').value=String(engineConfidence[previousEngine]);$('confidence').dispatchEvent(new Event('input'));
- message('분석 엔진을 바꿨습니다. 다시 분석을 누르면 적용됩니다.');$('compare').textContent='같은 사진으로 AI / OpenCV 비교';update();
-};
-$('compare').onclick=async()=>{
- const request=++sequence;setBusy(true);$('comparison').textContent='두 엔진으로 같은 사진을 비교 중입니다…';
+function stopCaptureCamera(){
+ captureGeneration++;captureStarting=false;
+ if(captureStream)captureStream.getTracks().forEach(track=>track.stop());
+ captureStream=null;$('capture-video').srcObject=null;
+}
+function closeCaptureMode(){captureMode=false;stopCaptureCamera();update();}
+async function startCaptureCamera(){
+ if(!captureMode||captureStarting||captureStream)return;
+ if(!navigator.mediaDevices?.getUserMedia){captureNotice='카메라를 사용할 수 없어요. 사진 선택을 이용해 주세요.';update();return;}
+ captureStarting=true;captureNotice='카메라를 여는 중이에요…';const generation=++captureGeneration;update();let candidate=null;
  try{
-  const read=()=>source.getContext('2d').getImageData(0,0,source.width,source.height);
-  const ai=await aiDetector.analyze(readAIInput(),{confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height},t=>$('busy-text').textContent=t);
-  const cv=await cvDetector.analyze(read(),{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked});
-  if(request!==sequence)return;
-  $('comparison').textContent=`AI ${ai.objects.length}개 (${(ai.processingTimeMs/1000).toFixed(1)}초) · OpenCV ${cv.objects.length}개 (${(cv.processingTimeMs/1000).toFixed(1)}초)\n수량 차이만으로 정확도를 판단하지 마세요. 실제 알약과 번호를 대조해야 합니다.`;
- }catch(e){if(request===sequence)$('comparison').textContent=e.message;}
- finally{if(request===sequence)setBusy(false);}
-};
-$('cancel').onclick=()=>{sequence++;detector.cancel();setBusy(false);message('자동 분석을 취소했습니다. 직접 표시하거나 다시 분석할 수 있습니다.');fit();};
-document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;update();});
+  candidate=await navigator.mediaDevices.getUserMedia(cameraConstraints());
+  if(generation!==captureGeneration||!captureMode||document.hidden){candidate.getTracks().forEach(track=>track.stop());return;}
+  captureStream=candidate;$('capture-video').srcObject=captureStream;await $('capture-video').play();
+  if(generation!==captureGeneration)return;
+  if($('capture-video').readyState<2)await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{ $('capture-video').removeEventListener('loadeddata',ready);reject(new Error('camera_timeout'));},10000);
+   function ready(){clearTimeout(timer);resolve();}$('capture-video').addEventListener('loadeddata',ready,{once:true});
+  });
+  if(generation!==captureGeneration)return;
+  captureStarting=false;captureNotice='알약이 모두 보이도록 화면을 맞춰 주세요.';update();
+  captureStream.getVideoTracks().forEach(track=>track.addEventListener('ended',()=>{
+   if(generation===captureGeneration){stopCaptureCamera();captureNotice='카메라가 연결되지 않았어요. 다시 열거나 사진을 선택해 주세요.';update();}
+  }));
+ }catch(error){
+  candidate?.getTracks().forEach(track=>track.stop());if(generation!==captureGeneration)return;
+  captureStream=null;$('capture-video').srcObject=null;captureStarting=false;
+  captureNotice=error.name==='NotAllowedError'?'카메라 권한을 허용하거나 사진을 선택해 주세요.':error.name==='NotFoundError'?'카메라를 찾지 못했어요. 사진을 선택해 주세요.':'카메라를 열지 못했어요. 다시 시도하거나 사진을 선택해 주세요.';
+  message(captureNotice,true);update();
+ }
+}
+function openCaptureMode(){
+ if(captureMode){void startCaptureCamera();return;}
+ if(currentTab==='live')stopLive();
+ captureMode=true;currentTab='photo';captureNotice='카메라 권한을 허용해 주세요.';message('');update();void startCaptureCamera();
+}
+function takePhoto(){
+ if(!captureStream||$('capture-video').readyState<2)return;
+ const photo=document.createElement('canvas');
+ try{captureToFrame(photo,$('capture-video'));loadImage(photo,null,{focusCount:true});}
+ catch(error){captureNotice=error.message;update();}
+}
+function switchTab(tab){
+ if(captureMode)stopCaptureCamera();captureMode=false;
+ if(currentTab===tab){update();if(tab==='live'&&!stream&&!starting)void startLive();return;}imageRequest++;stopLive();stopAnalysis();currentTab=tab;message('');
+ if(tab==='live'){liveCount=null;liveAt=0;$('live-hint').textContent='카메라를 열고 첫 화면을 분석하고 있어요…';}
+ update();fit();if(tab==='live')void startLive();
+}
+function resetPhoto(){
+ imageRequest++;captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();releaseSave();currentTab='photo';
+ loaded=false;analyzed=false;manualEdited=false;originalFile=null;analysis=null;objects=[];undoStack=[];mode='view';zoom=1;
+ liveCount=null;liveAt=0;source.width=source.height=1;canvas.width=canvas.height=1;$('markers').replaceChildren();renderedObjects=null;invalidate();message('');update();
+}
+function backWithinApp(){
+ if($('save-dialog').open){$('save-dialog').close();return;}
+ if($('leave-dialog').open){$('leave-dialog').close();return;}
+ if($('exit-dialog').open){$('exit-dialog').close();return;}
+ if(captureMode){closeCaptureMode();return;}
+ if(currentTab==='live'){switchTab('photo');return;}
+ if(busy){stopAnalysis();update();message('분석을 멈췄어요. 사진은 그대로 남아 있습니다.');return;}
+ if(mode!=='view'){mode='view';update();return;}
+ if(loaded){$('leave-dialog').showModal();return;}
+ $('exit-dialog').showModal();
+}
+// Keep one in-app history entry. Reloading does not add more entries.
+// Back closes the current task before the browser can leave the app.
+const navKey='__pillCounterNavigation';
+let allowExitNavigation=false;
+if(history.state?.[navKey]!=='guard'){
+ history.replaceState({...history.state,[navKey]:'base'},'',location.href);
+ history.pushState({...history.state,[navKey]:'guard'},'',location.href);
+}
+window.addEventListener('popstate',event=>{
+ if(allowExitNavigation)return;
+ const priorState=event.state&&typeof event.state==='object'?event.state:{};
+ history.pushState({...priorState,[navKey]:'guard'},'',location.href);
+ backWithinApp();
+});
+async function startLive(){
+ if(starting||stream)return;
+ if(!navigator.mediaDevices?.getUserMedia){message('이 브라우저에서 카메라를 열 수 없어요. Safari나 Chrome에서 열거나 사진 촬영을 이용해 주세요.',true);return;}
+ stopAnalysis();stopLive();const session=liveSession;starting=true;liveCount=null;liveAt=0;liveErrors=0;message('');update();let candidate=null;
+ try{
+  candidate=await navigator.mediaDevices.getUserMedia(cameraConstraints());
+  if(session!==liveSession||document.hidden){candidate.getTracks().forEach(t=>t.stop());return;}
+  stream=candidate;video.srcObject=stream;await video.play();if(session!==liveSession)return;
+  if(video.readyState<2)await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{video.removeEventListener('loadeddata',ready);reject(Error('camera_timeout'));},10000);
+   function ready(){clearTimeout(timer);resolve();}video.addEventListener('loadeddata',ready,{once:true});
+  });
+  if(session!==liveSession)return;starting=false;update();
+  liveAgeTimer=setInterval(()=>{
+   if(!liveAt)return;
+   const seconds=Math.floor((Date.now()-liveAt)/1000);
+   $('count-meta').textContent=seconds?`${seconds}초 전 분석한 수량`:'방금 분석한 수량';
+   if(seconds>=5){$('count').value='—';setStatus('분석 대기');$('live-hint').textContent='최신 화면을 분석하고 있어요…';}
+  },1000);
+  for(const track of stream.getVideoTracks())track.addEventListener('ended',()=>{if(session===liveSession){stopLive();update();message('카메라 연결이 끊겼어요. 다시 시작해 주세요.',true);}});
+  void liveTick(session);
+ }catch(error){
+  candidate?.getTracks().forEach(t=>t.stop());if(session!==liveSession)return;stopLive();update();
+  message(error.name==='NotAllowedError'?'카메라 권한을 허용해 주세요. 사진 촬영·선택도 이용할 수 있어요.':error.name==='NotFoundError'?'카메라를 찾을 수 없어요. 사진 선택을 이용해 주세요.':'카메라를 열지 못했어요. 다른 앱의 카메라를 닫고 다시 시도해 주세요.',true);
+ }
+}
+async function liveTick(session){
+ if(session!==liveSession||!stream||document.hidden)return;
+ const started=performance.now(),frame=document.createElement('canvas');
+ try{
+  captureToFrame(frame,video);
+  const result=await detector.analyze(frame.getContext('2d').getImageData(0,0,frame.width,frame.height),{confidence:.5,jpeg:true,timeoutMs:20000});
+  if(session!==liveSession)return;liveCount=result.objects.length;liveAt=Date.now();liveErrors=0;message('');update();
+  $('live-hint').textContent=`방금 분석 · ${(result.processingTimeMs/1000).toFixed(1)}초 소요 · 휴대폰을 고정해 주세요`;
+ }catch(error){
+  if(session!==liveSession)return;liveErrors++;liveCount=null;update();setStatus('연결 확인 중','error');$('live-hint').textContent='분석 연결을 기다리고 있어요…';
+  if(liveErrors>=3){stopLive();update();message('분석 연결이 원활하지 않아 멈췄어요. 인터넷 연결을 확인하고 다시 시작해 주세요.',true);return;}
+ }
+ if(session===liveSession&&stream){const delay=liveErrors?2000:Math.max(150,1000-(performance.now()-started));liveTimer=setTimeout(()=>void liveTick(session),delay);}
+}
+function freezeLive(){
+ if(!stream||video.readyState<2)return;const photo=document.createElement('canvas');
+ try{captureToFrame(photo,video);imageRequest++;loadImage(photo,null,{focusCount:true});}catch(error){message(error.message,true);}
+}
+function canvasBlob(image,type='image/jpeg',quality=.95){return new Promise((resolve,reject)=>image.toBlob(blob=>blob?resolve(blob):reject(Error('사진을 준비하지 못했어요.')),type,quality));}
+function releaseSave(){saveGeneration++;if(saveURL)URL.revokeObjectURL(saveURL);saveURL=null;saveFile=null;}
+async function prepareSave(kind){
+ releaseSave();const request=saveGeneration;$('save-device').disabled=true;$('save-download').hidden=true;$('save-status').textContent='';$('save-help').textContent='사진을 준비하고 있어요…';
+ for(const [id,value] of [['save-plain','plain'],['save-marked','marked']]){$(id).classList.toggle('selected',kind===value);$(id).setAttribute('aria-pressed',String(kind===value));}
+ try{
+  let blob;
+  if(kind==='plain'&&originalFile&&/^image\/(jpeg|png|webp)$/.test(originalFile.type)){blob=originalFile;}
+  else{
+   const output=document.createElement('canvas');
+   output.width=source.width;output.height=source.height;const c=output.getContext('2d');c.drawImage(source,0,0);
+   if(kind==='marked')markers(c,objects,Math.max(10,source.width/70));
+   blob=await canvasBlob(output);
+  }
+  if(request!==saveGeneration||!$('save-dialog').open)return;
+  const ext=blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg';
+  saveFile=new File([blob],`알약-${kind==='marked'?objects.length+'개-':''}${new Date().toISOString().replace(/[:.]/g,'-')}.${ext}`,{type:blob.type});
+  saveURL=URL.createObjectURL(saveFile);$('save-preview').src=saveURL;$('save-download').href=saveURL;$('save-download').download=saveFile.name;$('save-download').hidden=false;$('save-device').disabled=false;
+  $('save-help').textContent='휴대폰에 저장을 누르면 사진 파일을 내려받습니다. 다운로드 폴더에서 확인해 주세요.';
+ }catch{if(request===saveGeneration)$('save-help').textContent='사진을 준비하지 못했어요. 창을 닫고 다시 시도해 주세요.';}
+}
+function saveToDevice(){
+ if(!saveFile||saving)return;saving=true;$('save-device').disabled=true;
+ $('save-download').click();$('save-status').textContent='사진 파일을 내려받았어요. 휴대폰의 다운로드에서 확인해 주세요.';
+ setTimeout(()=>{saving=false;$('save-device').disabled=!saveFile;},900);
+}
+$('photo-tab').onclick=()=>switchTab('photo');$('live-tab').onclick=()=>switchTab('live');
+$('camera-open').onclick=openCaptureMode;$('capture-close').onclick=closeCaptureMode;$('shutter').onclick=takePhoto;
+$('capture-gallery').onclick=()=>$('file-input').click();
+$('upload').onclick=()=>$('file-input').click();
+$('file-input').onchange=e=>{void fileSelected(e.target.files[0]);e.target.value='';};
+$('reanalyze').onclick=()=>{if(undoStack.length&&!window.confirm('수정한 표시를 지우고 다시 셀까요?'))return;void analyze();};
+$('cancel').onclick=()=>{stopAnalysis();update();message('분석을 취소했어요. 다시 세거나 직접 추가할 수 있어요.');};
+ document.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>{mode=button.dataset.mode;update();});
 canvas.onclick=e=>{
  if(!loaded||busy||mode==='view')return;
- const rect=canvas.getBoundingClientRect(),x=(e.clientX-rect.left)*canvas.width/rect.width,y=(e.clientY-rect.top)*canvas.height/rect.height;
- if(mode==='add'){saveUndo();objects.push({id:`manual-${++manualId}`,x,y,r:12/scale,source:'manual'});}
+ const rect=canvas.getBoundingClientRect(),x=(e.clientX-rect.left)*canvas.width/rect.width,y=(e.clientY-rect.top)*canvas.height/rect.height,previous=clone();
+ if(mode==='add')objects.push({x,y,r:12/scale,source:'manual'});
  else{
-  let nearest=-1,distance=Infinity;
-  objects.forEach((o,i)=>{const d=Math.hypot(o.x-x,o.y-y);if(d<distance&&d<Math.max(22/scale,o.r*.75)){distance=d;nearest=i;}});
-  if(nearest<0){message('지울 번호 가까이를 터치해 주세요.');return;}
-  saveUndo();objects.splice(nearest,1);
- }message('수정한 번호를 확인한 후 최종 확인란을 체크해 주세요.');update();draw();
+  let nearest=-1,distance=Infinity;objects.forEach((o,i)=>{const d=Math.hypot(o.x-x,o.y-y);if(d<distance&&d<Math.max(22/scale,o.r*.75)){distance=d;nearest=i;}});
+  if(nearest<0){message('지울 번호 가까이를 터치해 주세요.');return;}objects.splice(nearest,1);
+ }
+ manualEdited=true;undoStack.push(previous);if(undoStack.length>60)undoStack.shift();invalidate();message('');update();draw();
 };
-$('undo').onclick=()=>{if(!undoStack.length)return;redoStack.push(clone());objects=undoStack.pop();invalidate();update();draw();};
-$('redo').onclick=()=>{if(!redoStack.length)return;undoStack.push(clone());objects=redoStack.pop();invalidate();update();draw();};
-$('zoom-in').onclick=()=>{zoom=Math.min(4,zoom+.25);fit();};$('zoom-out').onclick=()=>{zoom=Math.max(1,zoom-.25);fit();};$('zoom-reset').onclick=()=>{zoom=1;fit();};
-$('target').oninput=()=>{invalidate();update();};$('sensitivity').oninput=()=>$('sensitivity-value').value=(Number($('sensitivity').value)/100).toFixed(2);
-$('verified').onchange=()=>{confirmed=false;$('confirmation').textContent='';$('export').disabled=true;update();};
-$('complete').onclick=()=>{confirmed=true;$('confirmation').textContent=`직접 검수한 최종 수량: ${objects.length}개${sample?' (예제)':''}`;$('export').disabled=false;update();};
-$('export').onclick=()=>{
- if(!confirmed)return;
- const result={version:1,verifiedAt:new Date().toISOString(),filename,isSynthetic:sample,width:source.width,height:source.height,automaticCount,finalCount:objects.length,targetCount:targetCount(),verifiedByUser:true,detector:analysis?.detector??null,objects:objects.map(({id,x,y,source,r})=>({id,x,y,r,source})),imageIncluded:false};
- const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`pill-count-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+$('undo').onclick=()=>{if(!undoStack.length)return;objects=undoStack.pop();invalidate();update();draw();};
+$('zoom-in').onclick=()=>{zoom=Math.min(4,zoom+.5);fit();};$('zoom-out').onclick=()=>{zoom=Math.max(1,zoom-.5);fit();};$('zoom-reset').onclick=()=>{zoom=1;fit();};
+$('confirm').onclick=()=>{confirmed=true;$('confirmation').textContent=`직접 확인한 수량은 ${objects.length}개입니다.`;update();};
+$('live-stop').onclick=()=>{stopLive();update();$('live-hint').textContent='다시 연결하려면 실시간 카운팅 탭을 눌러 주세요.';};$('live-capture').onclick=freezeLive;
+$('save-photo').onclick=()=>{if(!loaded||busy)return;$('save-marked').disabled=!analyzed&&!manualEdited;$('save-dialog').showModal();void prepareSave('plain');};
+$('save-close').onclick=()=>$('save-dialog').close();$('save-dialog').addEventListener('close',releaseSave);
+$('leave-cancel').onclick=()=>$('leave-dialog').close();$('leave-confirm').onclick=()=>{$('leave-dialog').close();resetPhoto();};
+$('exit-cancel').onclick=()=>$('exit-dialog').close();
+$('exit-confirm').onclick=()=>{
+ $('exit-dialog').close();
+ // The browser controls whether a tab can be closed by script. Leave the app
+ // through its previous history entry when one exists; retain the page if it
+ // was opened as a standalone first page.
+ const url=location.href;let handled=false;
+ const onPageHide=()=>{handled=true;};window.addEventListener('pagehide',onPageHide,{once:true});
+ allowExitNavigation=true;
+ history.go(-2);
+ setTimeout(()=>{
+  window.removeEventListener('pagehide',onPageHide);
+  allowExitNavigation=false;
+  if(!handled&&location.href===url&&document.visibilityState==='visible')message('이전 화면이 없어 앱을 닫지 못했어요. 브라우저에서 탭을 닫아 주세요.',true);
+ },700);
 };
+$('save-plain').onclick=()=>void prepareSave('plain');$('save-marked').onclick=()=>void prepareSave('marked');$('save-device').onclick=()=>void saveToDevice();
 const dropzone=$('dropzone');for(const name of ['dragenter','dragover'])dropzone.addEventListener(name,e=>{e.preventDefault();if(!busy)dropzone.classList.add('dragging');});
-for(const name of ['dragleave','drop'])dropzone.addEventListener(name,e=>{e.preventDefault();dropzone.classList.remove('dragging');});dropzone.addEventListener('drop',e=>{if(!busy)fileSelected(e.dataTransfer.files[0]);});
-new ResizeObserver(()=>{if(loaded)fit();}).observe($('dropzone'));window.addEventListener('beforeunload',()=>{detector.cancel();aiDetector.dispose();});
-if(new URLSearchParams(location.search).has('test'))window.__pillCounterTest={state:()=>({count:objects.length,objects:clone(),busy,mode,sample,confirmed,automaticCount,width:source.width,height:source.height}),demo};
+for(const name of ['dragleave','drop'])dropzone.addEventListener(name,e=>{e.preventDefault();dropzone.classList.remove('dragging');});dropzone.addEventListener('drop',e=>{if(!busy)void fileSelected(e.dataTransfer.files[0]);});
+new ResizeObserver(fit).observe($('dropzone'));
+window.visualViewport?.addEventListener('resize',()=>{if(currentTab==='photo')draw();});
+document.addEventListener('visibilitychange',()=>{
+ if(document.hidden){
+  if(captureMode&&(captureStream||captureStarting)){stopCaptureCamera();captureNotice='카메라를 다시 연결하고 있어요…';}
+  if(stream||starting){stopLive();$('live-hint').textContent='화면을 벗어나 카메라를 멈췄어요. 다시 시작을 눌러 주세요.';}
+  update();
+ }else if(captureMode&&!captureStream&&!captureStarting)void startCaptureCamera();
+ else if(currentTab==='live'&&!stream&&!starting)void startLive();
+});
+window.addEventListener('pagehide',()=>{imageRequest++;captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();$('save-dialog').close();releaseSave();});
+window.addEventListener('pageshow',()=>{update();fit();if(captureMode&&!captureStream&&!captureStarting&&!document.hidden)void startCaptureCamera();});
+if(new URLSearchParams(location.search).has('test'))window.__pillCounterTest={state:()=>({loaded,analyzed,busy,objects:clone(),count:objects.length,currentTab,liveCount,liveAt,streamActive:!!stream,starting,confirmed,width:source.width,height:source.height,analysis}),fileSelected};
 update();
-// Pillens integration is paused; the default remains DEIMv2-X.
-$('suppress-containers').onchange=()=>message('용기·배경 제외 설정을 바꿨습니다. 다시 분석을 누르면 적용됩니다.');

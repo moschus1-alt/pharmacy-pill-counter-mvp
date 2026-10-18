@@ -4,6 +4,14 @@
   "buildCommand": "node build.mjs",
   "installCommand": "echo No dependencies required",
   "outputDirectory": "dist",
+  "regions": ["icn1"],
+  "functions": {
+    "api/analyze.py": {
+      "maxDuration": 120,
+      "includeFiles": "private-model/**",
+      "excludeFiles": "{models/**,vendor/**,dist/**,src/**,examples/**,licenses/**,.git/**}"
+    }
+  },
   "headers": [
     {
       "source": "/models/pill-deim-27940a50.:part",
