@@ -1,5 +1,7 @@
 import {PillDetector} from './image-detector.js';
 import {CAMERA_ASPECT_RATIO,cameraConstraints,captureCameraFrame as captureToFrame} from './camera-frame.js';
+import {photoGestures} from './photo-gestures.js';
+import {appNavigation} from './app-navigation.js';
 document.documentElement.style.setProperty('--camera-aspect',String(CAMERA_ASPECT_RATIO));
 const $=id=>document.getElementById(id);
 const detector=new PillDetector();
@@ -11,6 +13,8 @@ let currentTab='photo',stream=null,starting=false,liveSession=0,liveTimer=null,l
 let captureMode=false,captureStream=null,captureStarting=false,captureGeneration=0,captureNotice='알약을 모두 화면에 담아 주세요.';
 let saveGeneration=0,saveURL=null,saveFile=null;
 let renderedObjects=null,renderedLength=-1;
+let panX=0,panY=0;
+let rasterDirty=true;
 const clone=()=>structuredClone(objects);
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
 function setStatus(text,kind=''){$('status').textContent=text;$('status').className=`status ${kind}`;}
@@ -52,8 +56,25 @@ function update(){
 function fit(){
  if(!loaded||currentTab!=='photo')return;
  const stage=$('stage');scale=Math.max(.01,Math.min(stage.clientWidth/source.width,stage.clientHeight/source.height)*zoom);
- canvas.width=source.width;canvas.height=source.height;canvas.style.width=`${source.width*scale}px`;canvas.style.height=`${source.height*scale}px`;draw();
+ const width=source.width*scale,height=source.height*scale;
+ const limitX=Math.max(0,(width-stage.clientWidth)/2),limitY=Math.max(0,(height-stage.clientHeight)/2);
+ panX=Math.max(-limitX,Math.min(limitX,panX));panY=Math.max(-limitY,Math.min(limitY,panY));
+ const frame=canvas.parentElement;
+ frame.style.left=`${(stage.clientWidth-width)/2+panX}px`;frame.style.top=`${(stage.clientHeight-height)/2+panY}px`;
+ canvas.style.width=`${width}px`;canvas.style.height=`${height}px`;
+ if(canvas.width!==source.width||canvas.height!==source.height){canvas.width=source.width;canvas.height=source.height;rasterDirty=true;}
+ draw();
 }
+function zoomAt(value,clientX,clientY){
+ if(!loaded||busy)return;
+ const stage=$('stage'),rect=stage.getBoundingClientRect(),next=Math.max(1,Math.min(6,value)),ratio=next/zoom;
+ const x=(clientX??(rect.left+rect.width/2))-rect.left-stage.clientWidth/2;
+ const y=(clientY??(rect.top+rect.height/2))-rect.top-stage.clientHeight/2;
+ panX=x-(x-panX)*ratio;panY=y-(y-panY)*ratio;zoom=next;fit();
+}
+photoGestures($('stage'),{zoomAt,getZoom:()=>zoom,canMove:()=>loaded&&!busy&&mode==='view',tap:e=>{if(e.target===canvas)editPhoto(e);},panBy:(x,y)=>{
+ if(!loaded||busy)return;panX+=x;panY+=y;fit();
+}});
 function markers(context,items,radius){
  items.forEach((o,i)=>{
   context.beginPath();context.arc(o.x,o.y,radius,0,Math.PI*2);context.fillStyle=o.source==='manual'?'#306ec8':'#087961';context.fill();
@@ -64,7 +85,7 @@ function markers(context,items,radius){
 function viewportZoom(){return Math.max(1,window.visualViewport?.scale||1);}
 function draw(){
  if(!loaded)return;
- ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(source,0,0);
+ if(rasterDirty){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(source,0,0);rasterDirty=false;}
  // Separate labels from the photo raster: image zoom cannot enlarge or blur them.
  const overlay=$('markers');overlay.style.setProperty('--inverse-pinch',String(1/viewportZoom()));
  if(renderedObjects!==objects||renderedLength!==objects.length){
@@ -98,9 +119,9 @@ async function analyze(focusCount=false){
  finally{if(request===sequence){busy=false;update();fit();if(focusCount)requestAnimationFrame(()=>document.querySelector('.counter').scrollIntoView({behavior:'smooth',block:'start'}));}}
 }
 function loadImage(image,file=null,{focusCount=false}={}){
- captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();currentTab='photo';captureTo(source,image);originalFile=file;
+ captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();currentTab='photo';captureTo(source,image);rasterDirty=true;originalFile=file;
  $('dropzone').classList.toggle('camera-result',file===null);
- loaded=true;analyzed=false;manualEdited=false;objects=[];undoStack=[];mode='view';zoom=1;analysis=null;invalidate();update();fit();void analyze(focusCount);
+ loaded=true;analyzed=false;manualEdited=false;objects=[];undoStack=[];mode='view';zoom=1;panX=panY=0;analysis=null;invalidate();update();fit();void analyze(focusCount);
 }
 async function fileSelected(file,{focusCount=false}={}){
  if(!file)return;const request=++imageRequest;
@@ -120,7 +141,7 @@ function stopCaptureCamera(){
  if(captureStream)captureStream.getTracks().forEach(track=>track.stop());
  captureStream=null;$('capture-video').srcObject=null;
 }
-function closeCaptureMode(){captureMode=false;stopCaptureCamera();update();}
+function closeCaptureMode(){imageRequest++;captureMode=false;stopCaptureCamera();update();fit();}
 async function startCaptureCamera(){
  if(!captureMode||captureStarting||captureStream)return;
  if(!navigator.mediaDevices?.getUserMedia){captureNotice='카메라를 사용할 수 없어요. 사진 선택을 이용해 주세요.';update();return;}
@@ -165,7 +186,7 @@ function switchTab(tab){
 }
 function resetPhoto(){
  imageRequest++;captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();releaseSave();currentTab='photo';
- loaded=false;analyzed=false;manualEdited=false;originalFile=null;analysis=null;objects=[];undoStack=[];mode='view';zoom=1;
+ loaded=false;analyzed=false;manualEdited=false;originalFile=null;analysis=null;objects=[];undoStack=[];mode='view';zoom=1;panX=panY=0;
  liveCount=null;liveAt=0;source.width=source.height=1;canvas.width=canvas.height=1;$('markers').replaceChildren();renderedObjects=null;invalidate();message('');update();
 }
 function backWithinApp(){
@@ -176,23 +197,11 @@ function backWithinApp(){
  if(currentTab==='live'){switchTab('photo');return;}
  if(busy){stopAnalysis();update();message('분석을 멈췄어요. 사진은 그대로 남아 있습니다.');return;}
  if(mode!=='view'){mode='view';update();return;}
+ if(zoom>1){zoom=1;panX=panY=0;fit();return;}
  if(loaded){$('leave-dialog').showModal();return;}
  $('exit-dialog').showModal();
 }
-// Keep one in-app history entry. Reloading does not add more entries.
-// Back closes the current task before the browser can leave the app.
-const navKey='__pillCounterNavigation';
-let allowExitNavigation=false;
-if(history.state?.[navKey]!=='guard'){
- history.replaceState({...history.state,[navKey]:'base'},'',location.href);
- history.pushState({...history.state,[navKey]:'guard'},'',location.href);
-}
-window.addEventListener('popstate',event=>{
- if(allowExitNavigation)return;
- const priorState=event.state&&typeof event.state==='object'?event.state:{};
- history.pushState({...priorState,[navKey]:'guard'},'',location.href);
- backWithinApp();
-});
+const navigation=appNavigation(backWithinApp,()=>message('이전 화면이 없어 앱을 닫지 못했어요. 브라우저에서 탭을 닫아 주세요.',true));
 async function startLive(){
  if(starting||stream)return;
  if(!navigator.mediaDevices?.getUserMedia){message('이 브라우저에서 카메라를 열 수 없어요. Safari나 Chrome에서 열거나 사진 촬영을 이용해 주세요.',true);return;}
@@ -271,7 +280,7 @@ $('file-input').onchange=e=>{void fileSelected(e.target.files[0]);e.target.value
 $('reanalyze').onclick=()=>{if(undoStack.length&&!window.confirm('수정한 표시를 지우고 다시 셀까요?'))return;void analyze();};
 $('cancel').onclick=()=>{stopAnalysis();update();message('분석을 취소했어요. 다시 세거나 직접 추가할 수 있어요.');};
  document.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>{mode=button.dataset.mode;update();});
-canvas.onclick=e=>{
+function editPhoto(e){
  if(!loaded||busy||mode==='view')return;
  const rect=canvas.getBoundingClientRect(),x=(e.clientX-rect.left)*canvas.width/rect.width,y=(e.clientY-rect.top)*canvas.height/rect.height,previous=clone();
  if(mode==='add')objects.push({x,y,r:12/scale,source:'manual'});
@@ -280,9 +289,10 @@ canvas.onclick=e=>{
   if(nearest<0){message('지울 번호 가까이를 터치해 주세요.');return;}objects.splice(nearest,1);
  }
  manualEdited=true;undoStack.push(previous);if(undoStack.length>60)undoStack.shift();invalidate();message('');update();draw();
-};
+}
+canvas.onclick=editPhoto;
 $('undo').onclick=()=>{if(!undoStack.length)return;objects=undoStack.pop();invalidate();update();draw();};
-$('zoom-in').onclick=()=>{zoom=Math.min(4,zoom+.5);fit();};$('zoom-out').onclick=()=>{zoom=Math.max(1,zoom-.5);fit();};$('zoom-reset').onclick=()=>{zoom=1;fit();};
+$('zoom-in').onclick=()=>zoomAt(zoom+.5);$('zoom-out').onclick=()=>zoomAt(zoom-.5);$('zoom-reset').onclick=()=>{zoom=1;panX=panY=0;fit();};
 $('confirm').onclick=()=>{confirmed=true;$('confirmation').textContent=`직접 확인한 수량은 ${objects.length}개입니다.`;update();};
 $('live-stop').onclick=()=>{stopLive();update();$('live-hint').textContent='다시 연결하려면 실시간 카운팅 탭을 눌러 주세요.';};$('live-capture').onclick=freezeLive;
 $('save-photo').onclick=()=>{if(!loaded||busy)return;$('save-marked').disabled=!analyzed&&!manualEdited;$('save-dialog').showModal();void prepareSave('plain');};
@@ -291,18 +301,7 @@ $('leave-cancel').onclick=()=>$('leave-dialog').close();$('leave-confirm').oncli
 $('exit-cancel').onclick=()=>$('exit-dialog').close();
 $('exit-confirm').onclick=()=>{
  $('exit-dialog').close();
- // The browser controls whether a tab can be closed by script. Leave the app
- // through its previous history entry when one exists; retain the page if it
- // was opened as a standalone first page.
- const url=location.href;let handled=false;
- const onPageHide=()=>{handled=true;};window.addEventListener('pagehide',onPageHide,{once:true});
- allowExitNavigation=true;
- history.go(-2);
- setTimeout(()=>{
-  window.removeEventListener('pagehide',onPageHide);
-  allowExitNavigation=false;
-  if(!handled&&location.href===url&&document.visibilityState==='visible')message('이전 화면이 없어 앱을 닫지 못했어요. 브라우저에서 탭을 닫아 주세요.',true);
- },700);
+ navigation.exit();
 };
 $('save-plain').onclick=()=>void prepareSave('plain');$('save-marked').onclick=()=>void prepareSave('marked');$('save-device').onclick=()=>void saveToDevice();
 const dropzone=$('dropzone');for(const name of ['dragenter','dragover'])dropzone.addEventListener(name,e=>{e.preventDefault();if(!busy)dropzone.classList.add('dragging');});
@@ -319,5 +318,5 @@ document.addEventListener('visibilitychange',()=>{
 });
 window.addEventListener('pagehide',()=>{imageRequest++;captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();$('save-dialog').close();releaseSave();});
 window.addEventListener('pageshow',()=>{update();fit();if(captureMode&&!captureStream&&!captureStarting&&!document.hidden)void startCaptureCamera();});
-if(new URLSearchParams(location.search).has('test'))window.__pillCounterTest={state:()=>({loaded,analyzed,busy,objects:clone(),count:objects.length,currentTab,liveCount,liveAt,streamActive:!!stream,starting,confirmed,width:source.width,height:source.height,analysis}),fileSelected};
+if(new URLSearchParams(location.search).has('test'))window.__pillCounterTest={state:()=>({loaded,analyzed,busy,mode,zoom,panX,panY,captureMode,captureStarting,captureActive:!!captureStream,objects:clone(),count:objects.length,currentTab,liveCount,liveAt,streamActive:!!stream,starting,confirmed,width:source.width,height:source.height,analysis}),fileSelected};
 update();

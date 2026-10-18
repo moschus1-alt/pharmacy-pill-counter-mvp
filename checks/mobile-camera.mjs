@@ -21,15 +21,22 @@ const base=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});
 const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
 const page=await context.newPage(),errors=[],requests=[];
+// Test-driven page reloads intentionally leave the current screen.
+page.on('dialog',dialog=>dialog.accept());
+let delayAnalysis=0;
 page.on('pageerror',e=>errors.push(e.message));
 await page.route('**/api/analyze',async route=>{
  requests.push(route.request().postDataBuffer().toString('base64'));
+ if(delayAnalysis)await new Promise(resolve=>setTimeout(resolve,delayAnalysis));
  await route.fulfill({json:{objects:[{x:300,y:300,r:40,source:'auto',confidence:.99}],processingTimeMs:5}});
 });
 await page.addInitScript(()=>{
+ if(location.search.includes('fallback'))Object.defineProperty(window,'CloseWatcher',{value:undefined});
  window.testOrientation='portrait';window.testConstraints=[];
  Object.defineProperty(navigator.mediaDevices,'getUserMedia',{configurable:true,value:async constraints=>{
   window.testConstraints.push(constraints);
+  if(window.testPermissionDelay)await new Promise(resolve=>setTimeout(resolve,window.testPermissionDelay));
+  if(window.testPermissionDenied)throw new DOMException('Test permission denied','NotAllowedError');
   const c=document.createElement('canvas'),portrait=window.testOrientation==='portrait';
   c.width=portrait?600:1000;c.height=portrait?1000:600;
   const ctx=c.getContext('2d'),x=(c.width-600)/2,y=(c.height-600)/2;
@@ -83,5 +90,104 @@ try{
   const constraints=await page.evaluate(()=>window.testConstraints);assert.deepEqual(constraints[0],constraints[1]);
   console.log('PASS center crop, round shape, live capture and both export ratios',orientation);
  }
- assert.deepEqual(errors,[]);console.log('PASS no browser errors; inference was mocked for geometry checks');
+ // Exercise both the platform close-request path and history-only browsers.
+ for(const path of ['native','fallback']){
+  await page.goto(base+'/?test&'+path);
+  const back=async()=>{
+   if(path==='native')await page.keyboard.press('Escape');
+   else await page.goBack();
+  };
+  if(path==='fallback')await page.locator('#photo-tab').click();
+  await back();await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
+  await page.locator('#exit-cancel').click();
+  await page.locator('#camera-open').click();await page.waitForFunction(()=>!document.getElementById('shutter').disabled);
+  await back();await page.waitForFunction(()=>!window.__pillCounterTest.state().captureMode);
+  assert.equal(await page.locator('#exit-dialog').isVisible(),false);
+  assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().captureActive),false);
+  await page.locator('#live-tab').click();await page.waitForFunction(()=>window.__pillCounterTest.state().streamActive);
+  await back();await page.waitForFunction(()=>window.__pillCounterTest.state().currentTab==='photo');
+  assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().streamActive),false);
+  await page.locator('#camera-open').click();await page.waitForFunction(()=>!document.getElementById('shutter').disabled);
+  delayAnalysis=600;await page.locator('#shutter').click();await page.waitForFunction(()=>window.__pillCounterTest.state().busy);
+  await back();await page.waitForFunction(()=>!window.__pillCounterTest.state().busy);delayAnalysis=0;
+  assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().loaded),true);
+  await page.locator('#reanalyze').click();await settled();
+  await page.locator('[data-mode="add"]').click();await back();
+  await page.waitForFunction(()=>window.__pillCounterTest.state().mode==='view');
+  await page.locator('#save-photo').click();await page.waitForFunction(()=>document.getElementById('save-dialog').open);
+  await back();await page.waitForFunction(()=>!document.getElementById('save-dialog').open);
+  assert.equal(await page.locator('#leave-dialog').isVisible(),false,'one Back must only close the save dialog');
+  await page.locator('#zoom-in').click();await back();
+  await page.waitForFunction(()=>window.__pillCounterTest.state().zoom===1);
+  assert.equal(await page.locator('#leave-dialog').isVisible(),false);
+  await back();await page.waitForFunction(()=>document.getElementById('leave-dialog').open);
+  await back();await page.waitForFunction(()=>!document.getElementById('leave-dialog').open);
+  assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().loaded),true);
+  await back();await page.locator('#leave-confirm').click();
+  await page.waitForFunction(()=>!window.__pillCounterTest.state().loaded);
+  for(let i=0;i<3;i++){
+   await back();await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
+   await page.locator('#exit-cancel').click();
+  }
+  await page.reload();await page.locator('#photo-tab').click();
+  await back();await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
+  await page.locator('#exit-cancel').click();
+  console.log('PASS Back: home, capture, live, analysis, edit, save, zoom, result, repeat, reload',path);
+ }
+ await page.goto(base+'/?test');await page.locator('#camera-open').click();
+ await page.waitForFunction(()=>!document.getElementById('shutter').disabled);
+ await page.locator('#shutter').click();await settled();
+ await page.locator('#stage').scrollIntoViewIfNeeded();
+ const before=await page.evaluate(()=>{
+  const rect=id=>{const r=document.getElementById(id).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};};
+  return {stage:rect('stage'),canvas:rect('canvas'),marker:document.querySelector('.marker').getBoundingClientRect().width,viewport:visualViewport.scale,scroll:scrollY};
+ });
+ const cdp=await context.newCDPSession(page),cx=before.stage.x+before.stage.width/2,cy=before.stage.y+before.stage.height/2;
+ const touch=async(type,d)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'?[]:[{x:cx-d,y:cy,id:1},{x:cx+d,y:cy,id:2}]});
+ await touch('touchStart',30);
+ for(let d=35;d<=90;d+=5)await touch('touchMove',d);
+ await touch('touchEnd',0);
+ await page.waitForFunction(()=>window.__pillCounterTest.state().zoom>2);
+ const after=await page.evaluate(()=>({stage:document.getElementById('stage').getBoundingClientRect().toJSON(),canvas:document.getElementById('canvas').getBoundingClientRect().toJSON(),marker:document.querySelector('.marker').getBoundingClientRect().width,viewport:visualViewport.scale,scroll:scrollY,count:window.__pillCounterTest.state().count}));
+ assert.equal(after.stage.width,before.stage.width);assert.equal(after.stage.height,before.stage.height);
+ assert(after.canvas.width>before.canvas.width*2);assert.equal(after.viewport,before.viewport);assert.equal(after.scroll,before.scroll);assert.equal(after.marker,before.marker);
+ assert.equal(after.count,1);
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:cx,y:cy,id:1}]});
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:cx+45,y:cy+30,id:1}]});
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ assert((await page.evaluate(()=>window.__pillCounterTest.state().panX))>20);
+ await page.screenshot({path:results+'/zoom-inside-frame.png',fullPage:true});
+ await page.locator('#zoom-reset').click();assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().zoom),1);
+ console.log('PASS real two-finger touch: frame/page fixed, photo enlarged, labels fixed, drag and reset');
+ // Gallery aspect ratio, tap editing, and gesture suppression in editing mode.
+ await page.locator('#file-input').setInputFiles(fileURLToPath(new URL('../examples/mediseg-8-pills.png',import.meta.url)));await settled();
+ await page.locator('#zoom-in').click();
+ assert.equal(await page.evaluate(()=>visualViewport.scale),1);
+ await page.locator('[data-mode="add"]').click();
+ await page.locator('#stage').tap();
+ await page.waitForFunction(()=>window.__pillCounterTest.state().count===2);
+ const editBox=await page.locator('#stage').boundingBox(),editX=editBox.x+editBox.width/2,editY=editBox.y+editBox.height/2;
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:editX-20,y:editY,id:1},{x:editX+20,y:editY,id:2}]});
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ await new Promise(resolve=>setTimeout(resolve,450));
+ assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().count),2);
+ await page.keyboard.press('Escape');await page.keyboard.press('Escape');await page.keyboard.press('Escape');
+ await page.locator('#leave-confirm').click();
+ await page.evaluate(()=>window.testPermissionDelay=350);
+ await page.locator('#camera-open').click();await page.waitForFunction(()=>window.__pillCounterTest.state().captureStarting);
+ await page.keyboard.press('Escape');await new Promise(resolve=>setTimeout(resolve,450));
+ assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().captureActive),false);
+ assert.equal(await page.locator('#camera-open').isVisible(),true);
+ await page.evaluate(()=>{window.testPermissionDelay=0;window.testPermissionDenied=true;});
+ await page.locator('#camera-open').click();await page.waitForFunction(()=>!window.__pillCounterTest.state().captureStarting);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#camera-open').isVisible(),true);
+ await page.locator('#live-tab').click();await page.waitForFunction(()=>!window.__pillCounterTest.state().starting);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#camera-open').isVisible(),true);
+ console.log('PASS gallery, tap editing, Back during camera permission wait and denial');
+ await page.route('**/before',route=>route.fulfill({contentType:'text/html',body:'<a href="/?test">Open counter</a>'}));
+ await page.goto(base+'/before');await page.locator('a').click();
+ await page.locator('#photo-tab').click();await page.keyboard.press('Escape');
+ await page.locator('#exit-confirm').click();await page.waitForURL(base+'/before');
+ console.log('PASS explicit exit reaches previous page without another prompt');
+ assert.deepEqual(errors,[]);console.log('PASS no browser errors; inference was mocked for geometry and navigation checks');
 }finally{await browser.close();server.close();}

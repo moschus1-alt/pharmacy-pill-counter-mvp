@@ -17,8 +17,20 @@ try{
  const result=await prediction;assert.equal(result.status(),200);
  await page.waitForFunction(()=>window.__pillCounterTest.state().analyzed&&!window.__pillCounterTest.state().busy,{},{timeout:10000});
  const state=await page.evaluate(()=>window.__pillCounterTest.state());assert.equal(state.count,8);
+ for(const name of ['photo-gestures','app-navigation'])assert.equal((await context.request.get(base+'/src/'+name+'.js')).status(),200);
+ const frameBefore=await page.locator('#stage').boundingBox();
+ await page.locator('#zoom-in').click();
+ const frameAfter=await page.locator('#stage').boundingBox();
+ assert.equal(frameAfter.width,frameBefore.width);assert.equal(frameAfter.height,frameBefore.height);
+ assert.equal(await page.evaluate(()=>visualViewport.scale),1);
+ await page.keyboard.press('Escape');await page.waitForFunction(()=>window.__pillCounterTest.state().zoom===1);
+ await page.locator('#save-photo').click();await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>!document.getElementById('save-dialog').open);
+ await page.keyboard.press('Escape');await page.locator('#leave-confirm').click();
+ await page.keyboard.press('Escape');await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
+ await page.locator('#exit-cancel').click();
  assert.deepEqual(errors,[]);
  const output=fileURLToPath(new URL('../.test-results/',import.meta.url));await mkdir(output,{recursive:true});
  await page.screenshot({path:output+'production-result.png',fullPage:true});
- console.log(JSON.stringify({url:base,count:state.count,processingTimeMs:state.analysis.processingTimeMs,apiStatus:result.status(),browserErrors:errors,sourceModuleStatus:module.status()}));
+ console.log(JSON.stringify({url:base,count:state.count,processingTimeMs:state.analysis.processingTimeMs,apiStatus:result.status(),browserErrors:errors,sourceModuleStatus:module.status(),zoomAndBack:'passed'}));
 }finally{await browser.close();}
