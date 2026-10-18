@@ -3,5 +3,11 @@
   "version": "0.3.2",
   "private": true,
   "type": "module",
-  "scripts": {"build": "node build.mjs", "start": "node server.mjs"}
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "onnxruntime-web": "1.30.0"
+  }
 }
