@@ -70,10 +70,16 @@ async function analyze(){
   if(request!==sequence)return;
   analysis=result;objects=readingOrder(result.objects);automaticCount=objects.length;undoStack=[];redoStack=[];invalidate();
   $('runtime-result').textContent=isAI?
-   `${result.gpuFallbackReason?'GPU 실패 → CPU 자동 전환: '+result.gpuFallbackReason+' · ':''}${result.detector.runtime.includes('WebGPU')?'WebGPU+CPU':'CPU'} · 추론 ${(result.inferenceTimeMs/1000).toFixed(2)}초${Number.isFinite(result.sessionInitTimeMs)?' · 초기화 '+(result.sessionInitTimeMs/1000).toFixed(1)+'초':''}`:'OpenCV 분석';
+   `${result.detector.runtime.includes('WebGPU')?'WebGPU 전용':'CPU'} · ${result.cacheHit?'저장된 모델 사용 (재다운로드 없음)':result.persistentStorage?'모델 다운로드·저장 완료':'모델 다운로드 (저장 실패/미지원)'} · 모델 불러오기 ${(result.modelLoadTimeMs/1000).toFixed(1)}초 · 세션 준비 ${(result.sessionInitTimeMs/1000).toFixed(1)}초 · 추론 ${(result.inferenceTimeMs/1000).toFixed(2)}초`:'OpenCV 분석';
   message((sample?'예제는 실제 수량 30개인 합성 이미지이며 AI의 실사진 성능을 입증하지 않습니다.\n':'')+result.warnings.join('\n'));
   $('result-engine').textContent=isAI?'AI · DEIMv2-X':'OpenCV';
- }catch(error){if(request===sequence)message(`${error.message} 누락 추가 모드로 직접 표시할 수 있습니다.`,true);}
+ }catch(error){
+  if(request===sequence){
+   if($('engine').value==='ai'&&$('runtime-mode').value==='webgpu')
+    $('runtime-result').textContent='WebGPU 실행 실패: '+error.message+' · CPU로 자동 전환하지 않았습니다.';
+   message(error.message+' · GPU 시험판에서는 CPU로 자동 재시도하지 않습니다.',true);
+  }
+ }
  finally{if(request===sequence){setBusy(false);fit();}}
 }
 function loadImage(image,name,isSample=false){
@@ -83,8 +89,13 @@ function loadImage(image,name,isSample=false){
  source.getContext('2d').drawImage(image,0,0,source.width,source.height);
  $('empty').hidden=true;$('stage').hidden=false;fit();analyze();
 }
+let storagePersistenceRequested=false;
 async function fileSelected(file){
- if(!file)return;const request=++imageRequest;if(!/^image\//.test(file.type)){message('JPG, PNG, WebP 등 이미지 파일을 선택해 주세요.',true);return;}
+ if(!file)return;
+ if(!storagePersistenceRequested&&navigator.storage?.persist){
+  storagePersistenceRequested=true;
+  navigator.storage.persist().catch(()=>{});
+ }const request=++imageRequest;if(!/^image\//.test(file.type)){message('JPG, PNG, WebP 등 이미지 파일을 선택해 주세요.',true);return;}
  if(file.size>35*1024*1024){message('사진은 35MB 이하로 선택해 주세요.',true);return;}
  const url=URL.createObjectURL(file),image=new Image();
  image.onload=()=>{URL.revokeObjectURL(url);if(request!==imageRequest)return;if(image.width*image.height>80000000){message('사진 해상도가 너무 큽니다. 축소한 사진을 선택해 주세요.',true);return;}loadImage(image,file.name);};
