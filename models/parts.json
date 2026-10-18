@@ -1,0 +1,31 @@
+{
+  "bytes": 211455067,
+  "sha256": "27940a5099303a9e516c61b1ca25a69287ca309b065d45d1a48cb1b06a2da556",
+  "parts": [
+    {
+      "file": "pill-deim-27940a50.part00",
+      "bytes": 50331648,
+      "sha256": "1c94f37f794a0e1f5cf36afbcdfad3f8021d5f8ebd83d370bd4200b574f9d16a"
+    },
+    {
+      "file": "pill-deim-27940a50.part01",
+      "bytes": 50331648,
+      "sha256": "8ea02b029d65d6f3ab8ffafbc236abad99949419f5ef64ed5ac04cfbbea0d6c5"
+    },
+    {
+      "file": "pill-deim-27940a50.part02",
+      "bytes": 50331648,
+      "sha256": "cae8116d90721c2ae1fd29db975921559bc584d0b2655e53f5e97f49af71cab8"
+    },
+    {
+      "file": "pill-deim-27940a50.part03",
+      "bytes": 50331648,
+      "sha256": "2c9abb213edbaef2c0fc1420efb223bc41e0358a71a5d5af4e1c97fdaee9ed96"
+    },
+    {
+      "file": "pill-deim-27940a50.part04",
+      "bytes": 10128475,
+      "sha256": "73b99bb3846eb8a0fa90a211b5dcd6a3e1173bcd11ceb262fc440fa5ddc2f857"
+    }
+  ]
+}

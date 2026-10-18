@@ -1,0 +1,37 @@
+[
+  {
+    "image": "medical-000.png",
+    "originalCount": 16,
+    "convertedCount": 16,
+    "matchedOutputMaxBoxErrorPx": 0.4381103515625,
+    "matchedOutputMaxScoreError": 0.0026521682739257812
+  },
+  {
+    "image": "medical-005.png",
+    "originalCount": 17,
+    "convertedCount": 17,
+    "matchedOutputMaxBoxErrorPx": 0.42120361328125,
+    "matchedOutputMaxScoreError": 0.0013462305068969727
+  },
+  {
+    "image": "medical-014.png",
+    "originalCount": 14,
+    "convertedCount": 14,
+    "matchedOutputMaxBoxErrorPx": 0.517578125,
+    "matchedOutputMaxScoreError": 0.006879985332489014
+  },
+  {
+    "image": "query-0.png",
+    "originalCount": 9,
+    "convertedCount": 9,
+    "matchedOutputMaxBoxErrorPx": 0.2376708984375,
+    "matchedOutputMaxScoreError": 0.0015857815742492676
+  },
+  {
+    "image": "query-1.png",
+    "originalCount": 7,
+    "convertedCount": 7,
+    "matchedOutputMaxBoxErrorPx": 0.373138427734375,
+    "matchedOutputMaxScoreError": 0.0018082261085510254
+  }
+]

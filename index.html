@@ -1,1 +1,35 @@
-<!doctype html><html lang="ko"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#0b1220"/><meta name="description" content="약국에서 사진으로 알약을 세고 직접 검토하는 도구"/><link rel="manifest" href="./manifest.webmanifest"/><title>알약 카운터 · 약국용</title><link rel="stylesheet" href="/src/style.css"/></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#167967"><title>알약 카운터 · 모바일 테스트</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header class="header"><a class="brand" href="./"><span class="brand-mark">✚</span><span>알약 카운터<small>사진으로 세고, 직접 확인하세요</small></span></a><span class="local-badge"><i></i> 기기 내 처리</span></header>
+<main>
+<section class="intro"><div><div class="eyebrow">PILL COUNTER / 01</div><h1>한 장의 사진으로,<br class="mobile"> 알약을 한눈에.</h1><p>사진을 선택하고 자동 표시된 번호를 확인하세요.<br>빠진 알약과 잘못 잡힌 표시는 직접 고칠 수 있습니다.</p></div><div class="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m8 12 3 3 5-6"/></svg><span>사진은 이 기기 안에서만 처리합니다.<small>업로드 · 로그인 · 서버 저장 없음</small></span></div></section>
+<div class="workspace">
+<section class="image-panel" aria-label="알약 사진과 표시">
+<div class="panel-heading"><div><span class="step">01</span> 사진과 검출 결과</div><button id="replace" class="text-button" disabled>사진 바꾸기</button></div>
+<div id="dropzone" class="dropzone">
+<div id="empty" class="empty"><div class="upload-art"><svg viewBox="0 0 80 80" aria-hidden="true"><rect x="7" y="12" width="66" height="55" rx="14"/><path d="m16 52 16-17 12 12 9-9 13 16"/><circle cx="54" cy="28" r="5"/></svg><span>+</span></div><h2>알약이 모두 보이는 사진을 선택하세요</h2><p>단색 무광 배경에 서로 떨어뜨려 놓으면<br>더 쉽게 확인할 수 있습니다.</p><div class="capture-actions"><button id="camera" class="primary"><span aria-hidden="true">◎</span> 촬영하기</button><button id="upload" class="secondary">사진 선택</button></div><button id="real-demo" class="text-button demo">실제 알약 8개 사진으로 체험 →</button><button id="demo" class="text-button">30개 합성 예제 (OpenCV 테스트)</button><small>JPG · PNG · WebP, 최대 35MB · 끌어놓기도 가능</small></div>
+<div id="stage" class="stage" hidden><div id="canvas-wrap" class="canvas-wrap"><canvas id="canvas" aria-label="분석 사진. 아래 수정 모드에서 알약 위치를 터치할 수 있습니다."></canvas></div></div>
+<div id="busy" class="busy" hidden><span class="spinner"></span><strong>사진 속 알약을 찾고 있습니다</strong><span id="busy-text">첫 분석은 엔진을 불러오느라 조금 걸릴 수 있어요.</span><button id="cancel" class="secondary">분석 취소</button></div>
+</div>
+<div class="image-toolbar"><div class="legend"><span><i class="dot auto"></i> 자동</span><span><i class="dot manual"></i> 직접 추가</span><span><i class="dot review"></i> 확인 필요</span></div><div class="zoom"><button id="zoom-out" aria-label="축소" disabled>−</button><output id="zoom-value">100%</output><button id="zoom-in" aria-label="확대" disabled>+</button><button id="zoom-reset" class="text-button" disabled>맞춤</button></div></div>
+<p id="canvas-hint" class="canvas-hint">사진을 선택하면 번호가 여기에 표시됩니다.</p>
+</section>
+<aside class="controls">
+<section class="count-card"><div class="eyebrow">현재 표시 수량 <span id="result-engine"></span></div><div class="count-line"><output id="count" aria-live="polite">—</output><span>개</span></div><div id="count-meta" class="count-meta">사진을 선택해 시작하세요</div><div class="target-row"><label for="target">목표 수량 <span>(선택)</span></label><input id="target" type="number" min="1" max="9999" inputmode="numeric" placeholder="예: 30"></div><p id="difference" class="difference">목표 수량에 맞춰 검출 수를 바꾸지 않습니다.</p></section>
+<section class="engine-card"><label for="engine">분석 엔진</label><select id="engine"><option value="ai" selected>AI 알약 검출 · DEIMv2-X</option><option value="opencv">기존 OpenCV</option></select><label class="range-label" for="confidence">AI 신뢰도 기준 <output id="confidence-value">0.50</output></label><input id="confidence" type="range" min="5" max="95" step="5" value="50"><label class="check-label"><input id="suppress-containers" type="checkbox" checked> 용기·배경의 큰 오검출 줄이기</label><p class="fineprint">첫 AI 실행 시 모델 약 211MB를 내려받습니다. Wi-Fi 사용을 권장합니다. 알약 전용 실험 모델입니다. 누락과 중복은 직접 검수하세요. 약 이름은 식별하지 않습니다.</p><button id="compare" class="secondary full" disabled>같은 사진으로 AI / OpenCV 비교</button><p id="comparison" role="status"></p><a href="benchmark.html" class="text-button">정답 사진 여러 장으로 비교하기 →</a><br><a href="AI-비교보고서.txt" class="text-button">새 엔진의 공개 사진 평가 결과 →</a><br><a href="DEIM-개선-간단시험.txt" class="text-button">용기 오검출 개선 · 소규모 결과 →</a></section>
+<section class="edit-card"><div class="panel-heading"><div><span class="step">02</span> 표시 수정</div></div><p class="helper">모드를 선택하고 사진 속 위치를 터치하세요.</p><div class="mode-grid"><button data-mode="view" class="mode active" aria-pressed="true"><b>↖</b>보기</button><button data-mode="add" class="mode" aria-pressed="false" disabled><b>＋</b>누락 추가</button><button data-mode="remove" class="mode" aria-pressed="false" disabled><b>−</b>오검출 삭제</button></div><div class="history-row"><button id="undo" class="secondary" disabled>↶ 실행 취소</button><button id="redo" class="secondary" disabled>↷ 다시 실행</button></div><details><summary>OpenCV 인식 조정</summary><label class="range-label" for="sensitivity">민감도 <output id="sensitivity-value">0.80</output></label><input id="sensitivity" type="range" min="50" max="150" step="5" value="80"><label class="check-label"><input id="reflections" type="checkbox" checked> 흐린 반사·배경 잡음 억제</label></details><button id="reanalyze" class="secondary full" disabled>선택한 엔진으로 다시 분석</button><p class="fineprint">재분석하면 현재 수동 수정은 초기화됩니다.</p></section>
+<section class="confirm-card"><div class="panel-heading"><div><span class="step">03</span> 최종 확인</div></div><label class="check-label confirm-check"><input id="verified" type="checkbox" disabled><span>모든 번호가 실제 알약 하나씩에<br>표시됐는지 직접 확인했습니다.</span></label><button id="complete" class="primary full" disabled>확인 완료</button><p id="confirmation" role="status"></p><button id="export" class="text-button full" disabled>검수 결과 JSON 내려받기 ↓</button></section>
+</aside>
+</div>
+<div id="message" class="message" role="status" aria-live="polite"></div>
+<section class="tips"><div><span>01</span><h3>알약을 펼쳐 주세요</h3><p>겹치거나 세워진 알약은 자동으로<br>정확히 나누기 어렵습니다.</p></div><div><span>02</span><h3>반사광을 줄여 주세요</h3><p>금속 용기의 빛 반사와 그림자가<br>알약으로 표시될 수 있습니다.</p></div><div><span>03</span><h3>숫자보다 번호를 확인하세요</h3><p>누락과 오검출이 동시에 있으면<br>전체 수량만 같을 수 있습니다.</p></div></section>
+<footer>알약 검출 AI 실험판 · DEIMv2-X (고정 공개 버전 + DINOv3 조건) / OpenCV · 사진은 이 기기에서만 처리됩니다.<br>자동 결과만으로 조제를 확정하지 말고 직접 검수하세요. <a href="licenses/모델-라이선스.txt">모델 출처·라이선스</a></footer>
+</main>
+<input id="file-input" type="file" accept="image/jpeg,image/png,image/webp" hidden><input id="camera-input" type="file" accept="image/*" capture="environment" hidden>
+<script type="module" src="src/app.js"></script></body></html>
+
+
+
+
+

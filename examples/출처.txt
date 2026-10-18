@@ -1,0 +1,10 @@
+공개 실제 알약 8개 예제
+출처: MEDISEG-Deploy, query 이미지 id 2 (원본 파일명은 AI-비교결과.json의 해당 사진 참조)
+William Chu / Wai Ip Chu, Giacomo Tarroni, Ling Li (2026)
+https://city.figshare.com/articles/dataset/MEDISEG/28574786
+https://doi.org/10.48550/arXiv.2603.10833
+라이선스: Creative Commons Attribution 4.0 (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+변경: 공개 원본 이미지를 RGB PNG로 변환. 내용이나 정답 주석을 변경하지 않음.
+라이선스 전문: ../licenses/MEDISEG-CC-BY-4.0.txt
+이 공개 예제 한 장만 앱에 재배포하며 나머지 평가 사진은 포함하지 않음.

@@ -1,41 +1,24 @@
-# PillCount MVP
+# 알약 카운터 · 모바일 테스트
 
-A mobile-first, local-first pharmacy pill counter built with Vite and vanilla JavaScript.
+DEIMv2-X 알약 검출 모델과 OpenCV를 브라우저에서 실행하는 실험용 카운터입니다. 사진 선택/후면 카메라 촬영 → 번호 확인 → 빠진 알약 추가 및 잘못된 표시 삭제 → 직접 검수 후 JSON 저장 순서로 사용합니다.
 
-## Use
+사진 픽셀은 기기 안에서 처리합니다. 로그인, 사진 업로드 API, 서버 저장, 분석 서비스가 없습니다. HTTPS 정적 호스팅이며 서버 추론은 하지 않습니다. 첫 AI 실행에는 약 **211MB** 모델과 약 14MB WASM 다운로드가 필요합니다. Wi-Fi로 시험해 주세요. 기기 성능과 메모리에 따라 실행 시간이 길거나 실패할 수 있습니다. OpenCV는 별도로 선택할 수 있습니다.
 
-```sh
-npm install
-npm run dev
-```
+## 실행 및 배포
 
-Choose **Capture / upload** (the `capture="environment"` file input requests the Android rear camera) or upload a photo. Set a 30/60/90/custom target, review numbered contour overlays, correct with +/- or Undo/Redo, then save the correction. **Try demo image** is useful for a quick walkthrough.
+Node.js 22 이상에서 `npm run build`로 `dist/`를 생성합니다. Vercel은 저장소 기본 브랜치에서 같은 빌드를 수행합니다. 외부 npm 의존성이나 비밀 환경 변수는 필요하지 않습니다. 모델은 GitHub 파일 크기 제한을 고려해 다섯 부분으로 저장하며 브라우저가 차례로 읽어 각 SHA-256을 확인하고 원래 바이트로 합칩니다. 변환 모델 전체 해시는 `models/model-info.json`에 있습니다. 가중치는 변경하지 않았습니다.
 
-## Privacy and security
+## 출처 및 사용 조건
 
-The image is decoded and analyzed in the browser and is not sent to a server. Images are held in memory only and are not placed in IndexedDB. Saving stores only target, final count, and timestamp in a local IndexedDB database. Use HTTPS (or localhost) for camera access; the service worker and installable PWA require a secure origin.
+- 모델: Tsung-Han Liu / RevelioRX, `DanteLiu/deimv2-x-pill-android`, 고정 리비전 `8212a9edf5b2254bf86307f02abd333d725e16a3`. fp16 텐서와 입출력을 브라우저 CPU 호환 fp32로 변환했습니다. 학습하지 않았습니다.
+- 고정 모델 게시자의 Apache-2.0 및 **DINOv3 License** 조건이 적용됩니다. DINOv3 by Meta 사용을 명시합니다. 모델을 Apache 단독으로 취급하지 않습니다. 원문과 고정 버전 근거는 `licenses/`에 동봉했습니다.
+- ONNX Runtime Web 1.30.0: MIT 및 제3자 고지. OpenCV 4.9.0: 동봉 라이선스 참조.
+- 공개 알약 8개 사진: MEDISEG-Deploy, William Chu / Wai Ip Chu 외, CC BY 4.0. `examples/출처.txt` 참조.
 
-## Detection and limits
+## 검증 범위와 한계
 
-The browser detector uses OpenCV.js (loaded from the OpenCV CDN): grayscale local-contrast enhancement (CLAHE when available), yellow and blue color masks, low-saturation white-tablet masks, local top-hat contrast for stainless-steel reflections, two erosion strengths, contour/moment centers, and distance-transform peaks for conservative touching-pill splits. A fallback heuristic keeps the UI usable if the CDN is unavailable. Real-world performance depends on lighting, contrast, overlap, pill shape, and resolution. It does not identify medication, validate dosage, or replace a human check. Always verify every numbered overlay.
+자동 수량과 번호 위치를 반드시 직접 확인하세요. 약 이름이나 용량을 식별하지 않습니다. 신뢰도 기준과 용기 오검출 제외 옵션은 다시 분석할 때 적용됩니다. 목표 수량을 입력해도 검출 결과를 목표에 맞추지 않습니다.
 
-The synthetic browser fixture at `tests/synthetic-fixture.html` exercises five separated pills plus two touching pills and asserts that separated pills are found and the total stays within a conservative range.
+`AI-비교보고서.txt`는 후처리 변경 전 0.3.0 공개 사진 평가입니다. `DEIM-개선-간단시험.txt`는 0.3.1 후처리를 공개 사진 6장의 저장된 검출로 평가한 개발 기록입니다. 위치 오검출은 줄었지만 평균 수량 오차는 동일했고 일부 사진의 수량 오차는 커졌습니다. 휴대폰 실기기 정확도나 일반적인 실사용 성능을 보증하지 않습니다.
 
-## Current limits
-
-- Camera capture is browser/file-input based; continuous camera streaming is not implemented.
-- Pinch zoom is represented by a review stage and can be extended with a gesture library; overlays are rendered at the image's fitted scale.
-- Optional production metrics can be added around detector timing/counts; no telemetry is sent by this build.
-
-## Developer test data and benchmark
-
-Phase 1 developer tools are available at `/annotation.html` and
-`/benchmark.html` when running Vite. The annotation page accepts a local image,
-supports click-to-add/delete center markers, and downloads verified ground-truth
-JSON; it never uploads imagery. The benchmark consumes the manifest format in
-`test-data/manifest.schema.json`, compares actual detector output to annotated
-centers (TP/FP/FN, center-distance matching, precision/recall/F1, exact count
-accuracy, MAE, and processing time), and draws TP/FP/FN overlays. Use the
-optional image-file picker when testing a manifest selected from disk. Keep
-private pharmacy images outside version control and do not infer accuracy from
-the schema-only example manifest.
+이 저장소의 이전 MVP 이력은 유지했습니다. Pillens 모델, 앱 패키지, 디컴파일 자료와 개인 사진은 포함하지 않습니다.

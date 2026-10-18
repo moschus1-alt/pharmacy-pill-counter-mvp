@@ -1,0 +1,106 @@
+알약 전용 사전학습 모델 교체·실측 보고서 (2026-10-18, 앱 0.3.0)
+
+결론
+기존 SARANGx RT-DETR을 DEIMv2-X 알약 전용 공개 모델로 교체했다.
+기존 모델과 OpenCV보다 실제 검출이 개선됐고 앱에서 추론·보정·비교가 작동한다.
+다만 사진별 수량의 완전 일치율은 조건에 따라 낮아, 완전 자동 계수 제품으로 판단하면 안 된다.
+사진당 평균 오차와 실제 위치 일치율을 구분해서 아래에 기록했다.
+
+고정 모델 및 사용 허가
+DanteLiu/deimv2-x-pill-android, revision 8212a9edf5b2254bf86307f02abd333d725e16a3.
+모델 게시자는 Apache-2.0을 명시했다. 2026년 3월 공개 당시 기반 DEIMv2도 Apache-2.0이었다.
+당시 프로젝트 커밋 8241e8d79fd1225694445aec347fa39c708cc7e8의 LICENSE를 보존했다.
+현재 DEIMv2는 2026-08-24 이후 새 버전에 상업 이용 제한을 두므로, 이 앱은 변경 전 3월 공개 모델로 고정했다.
+기반 DINOv3의 별도 사용·수정·배포 조건도 보존했다. 전체를 Apache 단독 라이선스로 취급하지 않는다.
+licenses/모델-라이선스.txt 및 원문·변경 이력 근거 파일 참조.
+
+변환 및 추론
+공개 fp16 ONNX를 브라우저 CPU/WASM 호환 fp32로 변환했으며 학습이나 미세 조정은 하지 않았다.
+640x640 스트레치, RGB/255 후 ImageNet 정규화, 신뢰도 0.50, pill 클래스 0만 계수, needle 제외, NMS 없음.
+5장 원본/변환 대조에서 수량이 모두 같았다. 매칭 박스 최대 차이 0.518px(640 기준), 점수 최대 차이 0.00688.
+평가 시 정답 수량은 오차 계산에만 사용했으며 모델 입력에는 사진 픽셀만 제공했다.
+각 가중치 SHA256과 입출력 형식은 models/model-info.json, 변환 기록은 models/conversion-check.json.
+
+공개 실사진 평가 결과 (AI: native ONNX Runtime, OpenCV: browser)
+박스 정밀도/재현율은 클래스 구분 없는 IoU 0.5의 1:1 최대 매칭 기준이다.
+수량이 맞아도 잘못된 위치를 검출할 수 있어 수량과 박스를 따로 평가했다.
+
+MEDISEG 32pills multiple-object fixed sample: 100장, 정답 460개
+- 새 DEIMv2-X: 평균 절대 수량 오차 0.82개; 수량 정확 일치 51/100장; 박스 정밀도 82.4%, 재현율 87.4%
+- 이전 RT-DETR: 평균 절대 수량 오차 3.00개; 수량 정확 일치 24/100장; 박스 정밀도 98.8%, 재현율 34.3%
+- 추가 RT-DETR v2 후보: 평균 절대 수량 오차 3.20개; 수량 정확 일치 4/100장; 박스 정밀도 58.9%, 재현율 18.7%
+- 기존 OpenCV: 평균 절대 수량 오차 25.18개; 수량 정확 일치 1/100장; 박스 정밀도 1.3%, 재현율 8.0%
+
+MEDISEG 3pills multiple-object fixed sample: 50장, 정답 176개
+- 새 DEIMv2-X: 평균 절대 수량 오차 0.28개; 수량 정확 일치 37/50장; 박스 정밀도 92.6%, 재현율 100.0%
+- 이전 RT-DETR: 평균 절대 수량 오차 0.74개; 수량 정확 일치 27/50장; 박스 정밀도 100.0%, 재현율 79.0%
+- 추가 RT-DETR v2 후보: 평균 절대 수량 오차 3.38개; 수량 정확 일치 0/50장; 박스 정밀도 28.6%, 재현율 1.1%
+- 기존 OpenCV: 평균 절대 수량 오차 3.84개; 수량 정확 일치 9/50장; 박스 정밀도 0.3%, 재현율 0.6%
+
+MEDISEG-Deploy query: 5장, 정답 40개
+- 새 DEIMv2-X: 평균 절대 수량 오차 0.60개; 수량 정확 일치 2/5장; 박스 정밀도 92.7%, 재현율 95.0%
+- 추가 RT-DETR v2 후보: 평균 절대 수량 오차 6.00개; 수량 정확 일치 0/5장; 박스 정밀도 90.0%, 재현율 22.5%
+- 기존 OpenCV: 평균 절대 수량 오차 35.80개; 수량 정확 일치 0/5장; 박스 정밀도 3.2%, 재현율 17.5%
+
+medical-pills val: 23장, 정답 399개
+- 새 DEIMv2-X: 평균 절대 수량 오차 1.65개; 수량 정확 일치 4/23장; 박스 정밀도 99.2%, 재현율 89.7%
+- 추가 RT-DETR v2 후보: 평균 절대 수량 오차 16.04개; 수량 정확 일치 0/23장; 박스 정밀도 56.7%, 재현율 4.3%
+- 이전 RT-DETR: 평균 절대 수량 오차 16.30개; 수량 정확 일치 0/23장; 박스 정밀도 70.8%, 재현율 4.3%
+- 기존 OpenCV: 평균 절대 수량 오차 51.35개; 수량 정확 일치 0/23장; 박스 정밀도 0.0%, 재현율 0.0%
+
+pills-sxdht test: 90장, 정답 98개
+- 새 DEIMv2-X: 평균 절대 수량 오차 0.46개; 수량 정확 일치 63/90장; 박스 정밀도 71.1%, 재현율 98.0%
+- 추가 RT-DETR v2 후보: 평균 절대 수량 오차 5.02개; 수량 정확 일치 17/90장; 박스 정밀도 1.9%, 재현율 9.2%
+- 이전 RT-DETR: 평균 절대 수량 오차 0.88개; 수량 정확 일치 15/90장; 박스 정밀도 95.2%, 재현율 20.4%
+- 기존 OpenCV: 평균 절대 수량 오차 57.57개; 수량 정확 일치 3/90장; 박스 정밀도 0.2%, 재현율 9.2%
+
+평가 표본과 해석
+MEDISEG 32pills: 정답 3개 이상에서 사진명 원본 접두사 중복을 줄이고 seed 42로 100장 선택, 추론 전에 manifest 고정.
+컵·용기·가림 등 어려운 조건이 포함된다. 3~11개/장 범위이고 약국의 50개 밀집 트레이를 대표하지 않는다.
+MEDISEG 3pills: 정답 3개 이상에서 seed 42로 50장 선택. 이름처럼 약품 종류가 세 가지로 제한된 조건이다.
+MEDISEG-Deploy query는 5장(각 8개)으로 표본이 작다.
+medical-pills val은 서로 관련된 블리스터 포장 프레임 23장, pills-sxdht는 대부분 알약 한 개 사진 90장이다.
+모델의 학습 자료가 비공개여서 모든 공개 평가 사진과의 학습 중복을 감사하지 못했다.
+데이터의 정답 주석을 기준으로 측정했으며 주석 자체의 오류를 별도로 감사하지 않았다.
+실제 사용자 약국 사진, 알약 50개 이상인 실사진, 실제 휴대폰 하드웨어를 아직 검증하지 못했다.
+
+별도 신뢰도 기준 보정
+평가 100장과 원본 접두사가 겹치지 않는 MEDISEG 40장과 Deploy support 45장으로 보정했다.
+0.50, 0.55, 0.60, 0.65, 0.70, 0.75 중 보정 평균 오차가 가장 작은 0.50을 선택했다.
+보정 85장 MAE 0.294, 수량 일치 68장. 이 수치는 보정용이며 독립 평가 성적으로 합산하지 않았다.
+평가 100장에 맞춰 임계값을 조정하지 않았고 기본 기준은 게시자 권장치와 같다.
+
+실제 앱 및 브라우저 검증
+Deploy query 5장: 정답 8개씩 → 9, 7, 8, 8, 9개. native 실행과 같았다.
+MEDISEG의 고정된 첫 3장: 정답 7, 5, 4개 → 6, 6, 4개. native 실행과 같았다.
+공개 실제 8개 예제는 앱에서 8개로 검출됐다. 그 사진을 예제로 제공한다.
+사진 선택·비교·수동 보정·실행 취소·로딩 취소 후 수동 작업·모바일 레이아웃·외부 요청 없음 검사 통과.
+기존 회귀 검사 18개 및 사진 선택 경합/모바일 터치 좌표 검사 결과도 보존했다.
+브라우저 실측은 이 PC에서 사진당 약 15~17초, 모델 파일 약 211MB. 초기 모델 로딩은 제외.
+CPU 모델 비교와 브라우저 테스트의 속도를 직접 비교하지 않는다. 동시 QA 작업도 실행해 통제된 속도 실험은 아니다.
+
+앱 변경
+DEIMv2-X 전용 전처리/후처리, 바늘 제외, 모델 버전·해시·라이선스 기록, Web Worker에서 로컬 추론.
+OpenCV 비교 기능과 수동 보정 기능 유지. 정답 포함 다중 사진 비교 화면 유지.
+CC BY 4.0으로 허가된 실제 8개 알약 사진 한 장과 출처·라이선스를 동봉했다. 나머지 평가 사진은 재배포하지 않는다.
+사진이나 결과를 외부 추론 API에 보내지 않는다. Vercel 프로젝트 생성·배포는 하지 않았다.
+Pillens 가중치와 디컴파일 코드는 포함하지 않았다.
+
+추가 후보
+ChavyvAkvar/rtdetr-finetuned-multi-pills: Apache-2.0, 기반 RT-DETR v2도 Apache-2.0. 실제 비교 성능이 낮아 미채택.
+HealthEat RTMDet: 모델의 Apache 표기 외에 AI Hub/Kaggle 조건을 함께 요구하며 세부 적용 조건을 추가 확인해야 해 미채택.
+
+출처
+https://huggingface.co/DanteLiu/deimv2-x-pill-android
+https://raw.githubusercontent.com/Intellindust-AI-Lab/DEIMv2/8241e8d79fd1225694445aec347fa39c708cc7e8/LICENSE
+https://github.com/Intellindust-AI-Lab/DEIMv2/commit/bb64e5e1ede52479dcbf8e53ad0586d2131fe0a3
+https://github.com/facebookresearch/dinov3/blob/main/LICENSE.md
+https://city.figshare.com/articles/dataset/MEDISEG/28574786
+Chu et al., A dataset of medication images with instance segmentation masks for preventing adverse drug events, arXiv:2603.10825 (2026).
+Chu et al., Evaluating Few-Shot Pill Recognition Under Visual Domain Shift, arXiv:2603.10833 (2026).
+https://huggingface.co/ChavyvAkvar/rtdetr-finetuned-multi-pills
+https://huggingface.co/PekingU/rtdetr_v2_r18vd
+https://docs.ultralytics.com/datasets/detect/medical-pills/
+https://huggingface.co/datasets/Francesco/pills-sxdht
+
+사진별 수치: AI-비교결과.csv / 기계 판독 보고: AI-비교결과.json

@@ -1,0 +1,6 @@
+.git
+.vercel
+.env*
+node_modules
+dist
+server.mjs

@@ -1,3 +1,11 @@
-node_modules/
 dist/
-.DS_Store
+.vercel/
+node_modules/
+.env*
+*.onnx
+*.apk
+*.xapk
+*.tflite
+
+.vercel
+.env*
