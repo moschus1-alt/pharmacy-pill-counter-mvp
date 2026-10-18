@@ -4,9 +4,9 @@ import {loadVerifiedModel} from './model-cache.js';
 // GPU-only execution. Unsupported ONNX operators must produce a visible error, not CPU fallback.
 ort.env.wasm.numThreads=1;
 ort.env.wasm.wasmPaths=new URL('../vendor/ort/',import.meta.url).href;
-let session,modelInfo;
+let session,modelInfo,sessionLoadInfo;
 async function initialize(){
- if(session)return {modelLoadTimeMs:0,sessionInitTimeMs:0};
+ if(session)return {...sessionLoadInfo,modelLoadTimeMs:0,sessionInitTimeMs:0,sessionReused:true};;
  if(!navigator.gpu)throw Error('이 브라우저의 작업 스레드에서 WebGPU를 사용할 수 없습니다.');
  const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
  if(!adapter)throw Error('사용할 수 있는 GPU 어댑터가 없습니다.');
@@ -15,7 +15,8 @@ async function initialize(){
  self.postMessage({phase:'session',progress:'WebGPU 전용 모델 세션 초기화 중입니다.'});
  const initStarted=performance.now();
  session=await ort.InferenceSession.create(model,{executionProviders:['webgpu'],graphOptimizationLevel:'all'});
- return {modelLoadTimeMs,sessionInitTimeMs:Math.round(performance.now()-initStarted),cacheHit,persistentStorage};
+ sessionLoadInfo={modelLoadTimeMs,sessionInitTimeMs:Math.round(performance.now()-initStarted),cacheHit,persistentStorage,sessionReused:false};
+ return sessionLoadInfo;
 }
 self.onmessage=async({data:{imageData,parameters={}}})=>{
  try{
