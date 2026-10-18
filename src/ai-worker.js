@@ -1,9 +1,8 @@
 import * as ort from '../vendor/ort/ort.wasm.bundle.min.mjs';
 import {suppressContainerDetections} from './ai-postprocess.js';
-// Use mobile CPU cores when cross-origin isolation enables threaded WASM.
-const cores=navigator.hardwareConcurrency||2;
-ort.env.wasm.numThreads=self.crossOriginIsolated&&typeof SharedArrayBuffer!=='undefined'&&cores>=4
- ? Math.min(4,Math.ceil(cores/2)):1;
+// Browser WASM CPU execution: avoid Android cross-origin isolated multi-thread hangs.
+// Leave detection model, normalization and postprocessing unchanged.
+ort.env.wasm.numThreads=1;
 ort.env.wasm.wasmPaths=new URL('../vendor/ort/',import.meta.url).href;
 let session,modelInfo;
 async function initialize(){
