@@ -25,7 +25,7 @@ function update(){
  $('difference').textContent=$('target').value!==''&&target===null?'목표는 1~9999 사이의 정수로 입력해 주세요.':loaded&&target>0?(diff===0?'목표와 수량이 같습니다. 번호도 직접 확인하세요.':`목표 ${target}개보다 ${Math.abs(diff)}개 ${diff>0?'많습니다':'적습니다'}.`):'목표 수량에 맞춰 검출 수를 바꾸지 않습니다.';
  for(const id of ['replace','zoom-in','zoom-out','zoom-reset','reanalyze','verified','compare'])$(id).disabled=!loaded||busy;
  $('engine').disabled=busy;$('confidence').disabled=busy;
- $('suppress-containers').disabled=busy||$('engine').value!=='ai';
+ $('suppress-containers').disabled=busy||$('engine').value!=='ai';$('runtime-mode').disabled=busy||$('engine').value!=='ai';
  $('undo').disabled=!undoStack.length||busy;$('redo').disabled=!redoStack.length||busy;
  $('complete').disabled=!loaded||busy||!$('verified').checked||confirmed;
  for(const button of document.querySelectorAll('[data-mode]')){button.disabled=busy||(button.dataset.mode!=='view'&&!loaded);button.classList.toggle('active',button.dataset.mode===mode);button.setAttribute('aria-pressed',String(button.dataset.mode===mode));}
@@ -66,12 +66,20 @@ async function analyze(){
  try{
   const engine=$('engine').value,isAI=engine==='ai';
   const imageData=isAI?readAIInput():source.getContext('2d').getImageData(0,0,source.width,source.height);
-  const result=await (isAI?aiDetector:cvDetector).analyze(imageData,{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked,confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height},text=>{$('busy-text').textContent=text;});
+  const result=await (isAI?aiDetector:cvDetector).analyze(imageData,{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked,confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height,runtime:$('runtime-mode').value},text=>{$('busy-text').textContent=text;});
   if(request!==sequence)return;
   analysis=result;objects=readingOrder(result.objects);automaticCount=objects.length;undoStack=[];redoStack=[];invalidate();
+  $('runtime-result').textContent=isAI?
+   `${result.detector.runtime.includes('WebGPU')?'WebGPU 전용':'CPU'} · ${result.sessionReused?'이미 준비된 AI 모델 재사용 (재다운로드 없음)':result.cacheHit?'저장된 모델 사용 (재다운로드 없음)':result.persistentStorage?'모델 다운로드·저장 완료':'모델 다운로드 (저장 실패/미지원)'} · 모델 불러오기 ${(result.modelLoadTimeMs/1000).toFixed(1)}초 · 세션 준비 ${(result.sessionInitTimeMs/1000).toFixed(1)}초 · 추론 ${(result.inferenceTimeMs/1000).toFixed(2)}초`:'OpenCV 분석';
   message((sample?'예제는 실제 수량 30개인 합성 이미지이며 AI의 실사진 성능을 입증하지 않습니다.\n':'')+result.warnings.join('\n'));
   $('result-engine').textContent=isAI?'AI · DEIMv2-X':'OpenCV';
- }catch(error){if(request===sequence)message(`${error.message} 누락 추가 모드로 직접 표시할 수 있습니다.`,true);}
+ }catch(error){
+  if(request===sequence){
+   if($('engine').value==='ai'&&$('runtime-mode').value==='webgpu')
+    $('runtime-result').textContent='WebGPU 실행 실패: '+error.message+' · CPU로 자동 전환하지 않았습니다.';
+   message(error.message+($('engine').value==='ai'&&$('runtime-mode').value==='webgpu'?' · GPU 모드에서는 CPU로 자동 재시도하지 않습니다.':''),true);
+  }
+ }
  finally{if(request===sequence){setBusy(false);fit();}}
 }
 function loadImage(image,name,isSample=false){
@@ -81,8 +89,13 @@ function loadImage(image,name,isSample=false){
  source.getContext('2d').drawImage(image,0,0,source.width,source.height);
  $('empty').hidden=true;$('stage').hidden=false;fit();analyze();
 }
+let storagePersistenceRequested=false;
 async function fileSelected(file){
- if(!file)return;const request=++imageRequest;if(!/^image\//.test(file.type)){message('JPG, PNG, WebP 등 이미지 파일을 선택해 주세요.',true);return;}
+ if(!file)return;
+ if(!storagePersistenceRequested&&navigator.storage?.persist){
+  storagePersistenceRequested=true;
+  navigator.storage.persist().catch(()=>{});
+ }const request=++imageRequest;if(!/^image\//.test(file.type)){message('JPG, PNG, WebP 등 이미지 파일을 선택해 주세요.',true);return;}
  if(file.size>35*1024*1024){message('사진은 35MB 이하로 선택해 주세요.',true);return;}
  const url=URL.createObjectURL(file),image=new Image();
  image.onload=()=>{URL.revokeObjectURL(url);if(request!==imageRequest)return;if(image.width*image.height>80000000){message('사진 해상도가 너무 큽니다. 축소한 사진을 선택해 주세요.',true);return;}loadImage(image,file.name);};
@@ -112,7 +125,7 @@ $('compare').onclick=async()=>{
  const request=++sequence;setBusy(true);$('comparison').textContent='두 엔진으로 같은 사진을 비교 중입니다…';
  try{
   const read=()=>source.getContext('2d').getImageData(0,0,source.width,source.height);
-  const ai=await aiDetector.analyze(readAIInput(),{confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height},t=>$('busy-text').textContent=t);
+  const ai=await aiDetector.analyze(readAIInput(),{confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height,runtime:$('runtime-mode').value},t=>$('busy-text').textContent=t);
   const cv=await cvDetector.analyze(read(),{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked});
   if(request!==sequence)return;
   $('comparison').textContent=`AI ${ai.objects.length}개 (${(ai.processingTimeMs/1000).toFixed(1)}초) · OpenCV ${cv.objects.length}개 (${(cv.processingTimeMs/1000).toFixed(1)}초)\n수량 차이만으로 정확도를 판단하지 마세요. 실제 알약과 번호를 대조해야 합니다.`;
@@ -150,3 +163,5 @@ if(new URLSearchParams(location.search).has('test'))window.__pillCounterTest={st
 update();
 // Pillens integration is paused; the default remains DEIMv2-X.
 $('suppress-containers').onchange=()=>message('용기·배경 제외 설정을 바꿨습니다. 다시 분석을 누르면 적용됩니다.');
+$('runtime-mode').onchange=()=>message('실행 엔진을 바꿨습니다. 다시 분석을 누르면 적용됩니다.');
+$('gpu-support').textContent=navigator.gpu?'WebGPU 기능 감지됨 · 실제 GPU 모델 호환성은 분석 시 확인됩니다.':'이 브라우저에서 WebGPU를 찾지 못했습니다. CPU로 자동 실행됩니다.';
