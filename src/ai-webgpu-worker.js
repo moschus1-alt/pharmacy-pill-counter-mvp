@@ -1,6 +1,7 @@
 import * as ort from '../vendor/ort/ort.webgpu.bundle.min.mjs';
 import {suppressContainerDetections} from './ai-postprocess.js';
-// WebGPU with CPU fallback for unsupported nodes; single-threaded WASM is retained.
+import {loadVerifiedModel} from './model-cache.js';
+// GPU-only execution. Unsupported ONNX operators must produce a visible error, not CPU fallback.
 ort.env.wasm.numThreads=1;
 ort.env.wasm.wasmPaths=new URL('../vendor/ort/',import.meta.url).href;
 let session,modelInfo;
@@ -9,27 +10,12 @@ async function initialize(){
  if(!navigator.gpu)throw Error('이 브라우저의 작업 스레드에서 WebGPU를 사용할 수 없습니다.');
  const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
  if(!adapter)throw Error('사용할 수 있는 GPU 어댑터가 없습니다.');
- const started=performance.now();
- self.postMessage({progress:'AI 모델을 불러오는 중입니다. 첫 실행은 시간이 걸릴 수 있어요.'});
+ const {model,cacheHit,modelLoadTimeMs,persistentStorage}=await loadVerifiedModel(status=>self.postMessage(status));
  modelInfo=await fetch(new URL('../models/model-info.json',import.meta.url)).then(r=>{if(!r.ok)throw Error('모델 정보를 읽을 수 없습니다.');return r.json();});
- const manifest=await fetch(new URL('../models/parts.json',import.meta.url)).then(r=>{if(!r.ok)throw Error('모델 목록을 읽을 수 없습니다.');return r.json();});
- const model=new Uint8Array(manifest.bytes);let offset=0;
- for(const part of manifest.parts){
-  self.postMessage({progress:`AI 모델 다운로드 ${Math.round(offset/manifest.bytes*100)}% · 첫 실행 약 211MB`});
-  const response=await fetch(new URL('../models/'+part.file,import.meta.url));
-  if(!response.ok)throw Error('모델 다운로드에 실패했습니다. Wi-Fi 연결을 확인해 주세요.');
-  const bytes=new Uint8Array(await response.arrayBuffer());
-  if(bytes.length!==part.bytes)throw Error('모델 파일이 불완전합니다. 다시 시도해 주세요.');
-  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
-  if(hash!==part.sha256)throw Error('모델 파일 검증에 실패했습니다. 다시 시도해 주세요.');
-  model.set(bytes,offset);offset+=bytes.length;
- }
- if(offset!==manifest.bytes)throw Error('모델 크기가 일치하지 않습니다.');
- const modelLoadTimeMs=Math.round(performance.now()-started);
- self.postMessage({phase:'session',progress:'GPU 모델 세션 초기화 중입니다.'});
+ self.postMessage({phase:'session',progress:'WebGPU 전용 모델 세션 초기화 중입니다.'});
  const initStarted=performance.now();
- session=await ort.InferenceSession.create(model,{executionProviders:['webgpu','wasm'],graphOptimizationLevel:'all'});
- return {modelLoadTimeMs,sessionInitTimeMs:Math.round(performance.now()-initStarted)};
+ session=await ort.InferenceSession.create(model,{executionProviders:['webgpu'],graphOptimizationLevel:'all'});
+ return {modelLoadTimeMs,sessionInitTimeMs:Math.round(performance.now()-initStarted),cacheHit,persistentStorage};
 }
 self.onmessage=async({data:{imageData,parameters={}}})=>{
  try{
@@ -65,6 +51,6 @@ self.onmessage=async({data:{imageData,parameters={}}})=>{
   const refined=suppressContainerDetections(objects,parameters.suppressContainers!==false);
   const warnings=refined.objects.length?['AI 검출 결과입니다. 번호와 실제 알약 위치를 직접 확인하세요.']:['AI가 알약을 검출하지 못했습니다. 사진과 신뢰도 기준을 확인하거나 직접 표시하세요.'];
   if(refined.excluded.length)warnings.unshift(`용기·배경으로 의심되는 큰 영역 ${refined.excluded.length}개를 제외했습니다. 실제 알약이 빠졌는지 확인하세요.`);
-  self.postMessage({objects:refined.objects,excludedDetections:refined.excluded,processingTimeMs:Math.round(performance.now()-start),inferenceTimeMs,...loadTimes,detector:{type:'ai-deim',model:modelInfo.model,revision:modelInfo.revision,sha256:modelInfo.sha256,license:modelInfo.license,runtime:'ONNX Runtime Web 1.30.0 (WebGPU + WASM fallback)',parameters:{confidence:threshold,inputSize:size,wasmThreads:ort.env.wasm.numThreads,suppressContainers:parameters.suppressContainers!==false,normalization:'ImageNet mean/std after RGB/255',postprocess:'pill class 0; nested container suppression v1 (optional)'}},quality:null,warnings});
+  self.postMessage({objects:refined.objects,excludedDetections:refined.excluded,processingTimeMs:Math.round(performance.now()-start),inferenceTimeMs,...loadTimes,detector:{type:'ai-deim',model:modelInfo.model,revision:modelInfo.revision,sha256:modelInfo.sha256,license:modelInfo.license,runtime:'ONNX Runtime Web 1.30.0 (WebGPU only)',parameters:{confidence:threshold,inputSize:size,wasmThreads:ort.env.wasm.numThreads,suppressContainers:parameters.suppressContainers!==false,normalization:'ImageNet mean/std after RGB/255',postprocess:'pill class 0; nested container suppression v1 (optional)'}},quality:null,warnings});
  }catch(e){self.postMessage({error:'AI 분석에 실패했습니다. '+(e.message||String(e))});}
 };
