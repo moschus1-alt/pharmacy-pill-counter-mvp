@@ -1,28 +1,13 @@
-// Keep WebGPU and WASM in separate workers. If GPU initialization or inference fails,
-// release the GPU worker before trying the proven CPU implementation.
+// GPU is diagnostic-only: never silently switch execution providers.
+// Users can explicitly select the CPU reference mode in the interface.
 export class AIDetector {
  constructor(){this.worker=null;this.workerMode=null;this.pending=null;}
  analyze(imageData,parameters={},onProgress){
   this.cancel();
-  const wantsGPU=parameters.runtime==='webgpu';
-  const gpuAvailable=typeof navigator!=='undefined'&&Boolean(navigator.gpu);
-  return (async()=>{
-   let fallbackReason='';
-   if(wantsGPU&&gpuAvailable){
-    try{return await this.attempt(imageData,parameters,onProgress,'webgpu');}
-    catch(error){
-     if(error.name==='AbortError')throw error;
-     fallbackReason=error.message||'GPU 실행 오류';
-     onProgress?.('GPU 실행 실패 · 기존 CPU 엔진으로 자동 재시도합니다.');
-    }
-   }else if(wantsGPU){
-    fallbackReason='이 브라우저에서 WebGPU가 제공되지 않습니다.';
-    onProgress?.('WebGPU 미지원 · CPU로 인식합니다.');
-   }
-   const result=await this.attempt(imageData,parameters,onProgress,'wasm');
-   if(fallbackReason)result.gpuFallbackReason=fallbackReason;
-   return result;
-  })();
+  const mode=parameters.runtime==='webgpu'?'webgpu':'wasm';
+  if(mode==='webgpu'&&!navigator.gpu)
+   return Promise.reject(new Error('이 브라우저에서 WebGPU가 지원되지 않습니다. GPU 실행을 시도하지 않았습니다.'));
+  return this.attempt(imageData,parameters,onProgress,mode);
  }
  attempt(imageData,parameters,onProgress,mode){
   return new Promise((resolve,reject)=>{
@@ -38,22 +23,24 @@ export class AIDetector {
      reject(error);
     }else resolve(result);
    };
-   totalTimer=setTimeout(()=>finish(new Error('AI 분석 시간이 초과됐습니다.')),mode==='webgpu'?300000:180000);
+   totalTimer=setTimeout(()=>finish(new Error(mode==='webgpu'?'GPU 분석 전체 제한 시간 초과':'CPU 분석 전체 제한 시간 초과')),300000);
    const watch=phase=>{
     clearTimeout(watchdog);watchdog=null;
     if(mode==='webgpu'&&(phase==='session'||phase==='infer'))
-     watchdog=setTimeout(()=>finish(new Error(phase==='session'?'GPU 모델 초기화 제한 시간 초과':'GPU 추론 제한 시간 초과')),90000);
+     watchdog=setTimeout(()=>finish(new Error(phase==='session'?'GPU 모델 초기화 60초 시간 초과':'GPU 추론 60초 시간 초과')),60000);
    };
    this.pending=()=>finish(Object.assign(new Error('분석이 취소되었습니다.'),{name:'AbortError'}));
-   worker.onerror=()=>finish(new Error(mode==='webgpu'?'GPU 실행 모듈을 불러오지 못했습니다.':'AI 실행 파일을 읽지 못했습니다.'));
+   worker.onerror=event=>{
+    const detail=event.message&&event.message!=='Script error.'?event.message:'GPU/CPU 작업 스레드 스크립트 오류';
+    finish(new Error((mode==='webgpu'?'GPU':'CPU')+' 실행 모듈 오류: '+detail));
+   };
+   worker.onmessageerror=()=>finish(new Error('작업 스레드 메시지 처리에 실패했습니다.'));
    worker.onmessage=({data})=>{
     if(finished)return;
     if(data.progress){if(data.phase)watch(data.phase);onProgress?.(data.progress);return;}
     data.error?finish(new Error(data.error)):finish(null,data);
    };
-   // GPU cannot detach the caller buffer: the fallback CPU run needs the same image.
-   if(mode==='webgpu')worker.postMessage({imageData,parameters});
-   else worker.postMessage({imageData,parameters},[imageData.data.buffer]);
+   worker.postMessage({imageData,parameters},[imageData.data.buffer]);
   });
  }
  cancel(){this.pending?.();}
