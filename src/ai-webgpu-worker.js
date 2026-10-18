@@ -6,7 +6,7 @@ ort.env.wasm.numThreads=1;
 ort.env.wasm.wasmPaths=new URL('../vendor/ort/',import.meta.url).href;
 let session,modelInfo,sessionLoadInfo;
 async function initialize(){
- if(session)return {...sessionLoadInfo,modelLoadTimeMs:0,sessionInitTimeMs:0,sessionReused:true};;
+ if(session)return {...sessionLoadInfo,modelLoadTimeMs:0,sessionInitTimeMs:0,sessionReused:true};
  if(!navigator.gpu)throw Error('이 브라우저의 작업 스레드에서 WebGPU를 사용할 수 없습니다.');
  const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
  if(!adapter)throw Error('사용할 수 있는 GPU 어댑터가 없습니다.');
