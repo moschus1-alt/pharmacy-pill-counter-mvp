@@ -4,6 +4,14 @@ const $=id=>document.getElementById(id);
 const cvDetector=new OpenCVDetector(),aiDetector=new AIDetector();
 const detector={cancel(){cvDetector.cancel();aiDetector.cancel();}};
 const source=document.createElement('canvas'),canvas=$('canvas'),ctx=canvas.getContext('2d');
+// Send the same 640x640 resampling to the worker without a full-size RGBA transfer.
+const aiInput=document.createElement('canvas');aiInput.width=aiInput.height=640;
+const aiInputContext=aiInput.getContext('2d',{willReadFrequently:true});
+function readAIInput(){
+ aiInputContext.imageSmoothingEnabled=true;aiInputContext.imageSmoothingQuality='low';
+ aiInputContext.clearRect(0,0,640,640);aiInputContext.drawImage(source,0,0,640,640);
+ return aiInputContext.getImageData(0,0,640,640);
+}
 let loaded=false,objects=[],automaticCount=0,undoStack=[],redoStack=[],mode='view',zoom=1,scale=1,busy=false,sequence=0,imageRequest=0,sample=false,analysis=null,confirmed=false,filename='',manualId=0;
 const clone=()=>structuredClone(objects);
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
@@ -56,9 +64,9 @@ async function analyze(){
  if(!loaded)return;
  const request=++sequence;setBusy(true);message('');
  try{
-  const imageData=source.getContext('2d').getImageData(0,0,source.width,source.height);
   const engine=$('engine').value,isAI=engine==='ai';
-  const result=await (isAI?aiDetector:cvDetector).analyze(imageData,{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked,confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked},text=>{$('busy-text').textContent=text;});
+  const imageData=isAI?readAIInput():source.getContext('2d').getImageData(0,0,source.width,source.height);
+  const result=await (isAI?aiDetector:cvDetector).analyze(imageData,{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked,confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height},text=>{$('busy-text').textContent=text;});
   if(request!==sequence)return;
   analysis=result;objects=readingOrder(result.objects);automaticCount=objects.length;undoStack=[];redoStack=[];invalidate();
   message((sample?'예제는 실제 수량 30개인 합성 이미지이며 AI의 실사진 성능을 입증하지 않습니다.\n':'')+result.warnings.join('\n'));
@@ -104,7 +112,7 @@ $('compare').onclick=async()=>{
  const request=++sequence;setBusy(true);$('comparison').textContent='두 엔진으로 같은 사진을 비교 중입니다…';
  try{
   const read=()=>source.getContext('2d').getImageData(0,0,source.width,source.height);
-  const ai=await aiDetector.analyze(read(),{confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked},t=>$('busy-text').textContent=t);
+  const ai=await aiDetector.analyze(readAIInput(),{confidence:Number($('confidence').value)/100,suppressContainers:$('suppress-containers').checked,originalWidth:source.width,originalHeight:source.height},t=>$('busy-text').textContent=t);
   const cv=await cvDetector.analyze(read(),{sensitivity:Number($('sensitivity').value)/100,suppressReflections:$('reflections').checked});
   if(request!==sequence)return;
   $('comparison').textContent=`AI ${ai.objects.length}개 (${(ai.processingTimeMs/1000).toFixed(1)}초) · OpenCV ${cv.objects.length}개 (${(cv.processingTimeMs/1000).toFixed(1)}초)\n수량 차이만으로 정확도를 판단하지 마세요. 실제 알약과 번호를 대조해야 합니다.`;

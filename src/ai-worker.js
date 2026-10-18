@@ -1,6 +1,9 @@
 import * as ort from '../vendor/ort/ort.wasm.bundle.min.mjs';
 import {suppressContainerDetections} from './ai-postprocess.js';
-ort.env.wasm.numThreads=1;
+// Use mobile CPU cores when cross-origin isolation enables threaded WASM.
+const cores=navigator.hardwareConcurrency||2;
+ort.env.wasm.numThreads=self.crossOriginIsolated&&typeof SharedArrayBuffer!=='undefined'&&cores>=4
+ ? Math.min(4,Math.ceil(cores/2)):1;
 ort.env.wasm.wasmPaths=new URL('../vendor/ort/',import.meta.url).href;
 let session,modelInfo;
 async function initialize(){
@@ -26,13 +29,23 @@ async function initialize(){
 self.onmessage=async({data:{imageData,parameters={}}})=>{
  try{
   await initialize();self.postMessage({progress:'AI가 알약 위치를 추론하고 있습니다.'});
-  const start=performance.now(),{width,height}=imageData,size=640;
-  const original=new OffscreenCanvas(width,height);original.getContext('2d').putImageData(imageData,0,0);
-  const resized=new OffscreenCanvas(size,size),ctx=resized.getContext('2d',{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';ctx.drawImage(original,0,0,size,size);
-  const rgba=ctx.getImageData(0,0,size,size).data,plane=size*size,tensor=new Float32Array(plane*3);
+  const start=performance.now(),size=640;
+  const width=Number(parameters.originalWidth)||imageData.width,height=Number(parameters.originalHeight)||imageData.height;
+  // Mobile UI already sent 640x640 pixels; older/benchmark callers use the original path.
+  let rgba;
+  if(imageData.width===size&&imageData.height===size){
+   rgba=imageData.data;
+  }else{
+   const original=new OffscreenCanvas(imageData.width,imageData.height);original.getContext('2d').putImageData(imageData,0,0);
+   const resized=new OffscreenCanvas(size,size),ctx=resized.getContext('2d',{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='low';ctx.drawImage(original,0,0,size,size);
+   rgba=ctx.getImageData(0,0,size,size).data;
+  }
+  const plane=size*size,tensor=new Float32Array(plane*3);
   for(let i=0;i<plane;i++){tensor[i]=(rgba[i*4]/255-.485)/.229;tensor[plane+i]=(rgba[i*4+1]/255-.456)/.224;tensor[plane*2+i]=(rgba[i*4+2]/255-.406)/.225;}
   const input=new ort.Tensor('float32',tensor,[1,3,size,size]);
+  const inferStart=performance.now();
   let output;try{output=await session.run({image:input});}finally{input.dispose();}
+  const inferenceTimeMs=Math.round(performance.now()-inferStart);
   const scores=output.scores,labels=output.labels,boxes=output.boxes;
   if(!scores||!labels||!boxes||boxes.dims[2]!==4)throw Error('예상하지 못한 모델 출력 형식입니다.');
   const threshold=Math.max(.05,Math.min(.95,Number(parameters.confidence)||.5)),queries=scores.dims[1],objects=[];
@@ -47,6 +60,6 @@ self.onmessage=async({data:{imageData,parameters={}}})=>{
   const refined=suppressContainerDetections(objects,parameters.suppressContainers!==false);
   const warnings=refined.objects.length?['AI 검출 결과입니다. 번호와 실제 알약 위치를 직접 확인하세요.']:['AI가 알약을 검출하지 못했습니다. 사진과 신뢰도 기준을 확인하거나 직접 표시하세요.'];
   if(refined.excluded.length)warnings.unshift(`용기·배경으로 의심되는 큰 영역 ${refined.excluded.length}개를 제외했습니다. 실제 알약이 빠졌는지 확인하세요.`);
-  self.postMessage({objects:refined.objects,excludedDetections:refined.excluded,processingTimeMs:Math.round(performance.now()-start),detector:{type:'ai-deim',model:modelInfo.model,revision:modelInfo.revision,sha256:modelInfo.sha256,license:modelInfo.license,runtime:'ONNX Runtime Web 1.30.0',parameters:{confidence:threshold,inputSize:size,suppressContainers:parameters.suppressContainers!==false,normalization:'ImageNet mean/std after RGB/255',postprocess:'pill class 0; nested container suppression v1 (optional)'}},quality:null,warnings});
+  self.postMessage({objects:refined.objects,excludedDetections:refined.excluded,processingTimeMs:Math.round(performance.now()-start),inferenceTimeMs,detector:{type:'ai-deim',model:modelInfo.model,revision:modelInfo.revision,sha256:modelInfo.sha256,license:modelInfo.license,runtime:'ONNX Runtime Web 1.30.0',parameters:{confidence:threshold,inputSize:size,wasmThreads:ort.env.wasm.numThreads,suppressContainers:parameters.suppressContainers!==false,normalization:'ImageNet mean/std after RGB/255',postprocess:'pill class 0; nested container suppression v1 (optional)'}},quality:null,warnings});
  }catch(e){self.postMessage({error:'AI 분석에 실패했습니다. '+(e.message||String(e))});}
 };
