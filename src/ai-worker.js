@@ -5,15 +5,16 @@ import {loadVerifiedModel} from './model-cache.js';
 // Leave detection model, normalization and postprocessing unchanged.
 ort.env.wasm.numThreads=1;
 ort.env.wasm.wasmPaths=new URL('../vendor/ort/',import.meta.url).href;
-let session,modelInfo;
+let session,modelInfo,sessionLoadInfo;
 async function initialize(){
- if(session)return;
+ if(session)return {...sessionLoadInfo,modelLoadTimeMs:0,sessionInitTimeMs:0,sessionReused:true};
  const {model,cacheHit,modelLoadTimeMs,persistentStorage}=await loadVerifiedModel(status=>self.postMessage(status));
  modelInfo=await fetch(new URL('../models/model-info.json',import.meta.url)).then(r=>{if(!r.ok)throw Error('모델 정보를 읽을 수 없습니다.');return r.json();});
  self.postMessage({phase:'session',progress:'CPU 모델 세션 초기화 중입니다.'});
  const initStarted=performance.now();
  session=await ort.InferenceSession.create(model,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
- return {modelLoadTimeMs,sessionInitTimeMs:Math.round(performance.now()-initStarted),cacheHit,persistentStorage};
+ sessionLoadInfo={modelLoadTimeMs,sessionInitTimeMs:Math.round(performance.now()-initStarted),cacheHit,persistentStorage,sessionReused:false};
+ return sessionLoadInfo;
 }
 self.onmessage=async({data:{imageData,parameters={}}})=>{
  try{
