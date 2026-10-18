@@ -70,14 +70,14 @@ async function analyze(){
   if(request!==sequence)return;
   analysis=result;objects=readingOrder(result.objects);automaticCount=objects.length;undoStack=[];redoStack=[];invalidate();
   $('runtime-result').textContent=isAI?
-   `${result.detector.runtime.includes('WebGPU')?'WebGPU 전용':'CPU'} · ${result.cacheHit?'저장된 모델 사용 (재다운로드 없음)':result.persistentStorage?'모델 다운로드·저장 완료':'모델 다운로드 (저장 실패/미지원)'} · 모델 불러오기 ${(result.modelLoadTimeMs/1000).toFixed(1)}초 · 세션 준비 ${(result.sessionInitTimeMs/1000).toFixed(1)}초 · 추론 ${(result.inferenceTimeMs/1000).toFixed(2)}초`:'OpenCV 분석';
+   `${result.detector.runtime.includes('WebGPU')?'WebGPU 전용':'CPU'} · ${result.sessionReused?'이미 준비된 AI 모델 재사용 (재다운로드 없음)':result.cacheHit?'저장된 모델 사용 (재다운로드 없음)':result.persistentStorage?'모델 다운로드·저장 완료':'모델 다운로드 (저장 실패/미지원)'} · 모델 불러오기 ${(result.modelLoadTimeMs/1000).toFixed(1)}초 · 세션 준비 ${(result.sessionInitTimeMs/1000).toFixed(1)}초 · 추론 ${(result.inferenceTimeMs/1000).toFixed(2)}초`:'OpenCV 분석';
   message((sample?'예제는 실제 수량 30개인 합성 이미지이며 AI의 실사진 성능을 입증하지 않습니다.\n':'')+result.warnings.join('\n'));
   $('result-engine').textContent=isAI?'AI · DEIMv2-X':'OpenCV';
  }catch(error){
   if(request===sequence){
    if($('engine').value==='ai'&&$('runtime-mode').value==='webgpu')
     $('runtime-result').textContent='WebGPU 실행 실패: '+error.message+' · CPU로 자동 전환하지 않았습니다.';
-   message(error.message+' · GPU 시험판에서는 CPU로 자동 재시도하지 않습니다.',true);
+   message(error.message+($('engine').value==='ai'&&$('runtime-mode').value==='webgpu'?' · GPU 모드에서는 CPU로 자동 재시도하지 않습니다.':''),true);
   }
  }
  finally{if(request===sequence){setBusy(false);fit();}}
