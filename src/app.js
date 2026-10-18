@@ -37,7 +37,8 @@ function update(){
  }
  $('dropzone').hidden=!loaded;$('empty').hidden=loaded;$('stage').hidden=!loaded;$('busy').hidden=!busy;
  $('image-tools').hidden=!loaded;$('result-actions').hidden=!loaded;$('home-camera-action').hidden=loaded;
- for(const id of ['reanalyze','save-photo','zoom-in','zoom-out','zoom-reset','upload','camera-open'])$(id).disabled=busy;
+ $('photo-back').hidden=!loaded;$('next-photo-actions').hidden=!loaded;
+ for(const id of ['reanalyze','save-photo','zoom-in','zoom-out','zoom-reset','upload','camera-open','retake','other-photo'])$(id).disabled=busy;
  $('camera-placeholder').hidden=!!captureStream;
  $('capture-status').textContent=captureStarting?'카메라를 연결하고 있어요…':captureStream?captureNotice:'카메라 권한을 허용해 주세요.';
  $('camera-placeholder').querySelector('strong').textContent=captureStarting?'카메라를 연결하고 있어요':captureNotice;
@@ -274,6 +275,9 @@ function saveToDevice(){
 }
 $('photo-tab').onclick=()=>switchTab('photo');$('live-tab').onclick=()=>switchTab('live');
 $('camera-open').onclick=openCaptureMode;$('capture-close').onclick=closeCaptureMode;$('shutter').onclick=takePhoto;
+$('retake').onclick=openCaptureMode;
+$('other-photo').onclick=()=>$('file-input').click();
+$('photo-back').onclick=backWithinApp;
 $('capture-gallery').onclick=()=>$('file-input').click();
 $('upload').onclick=()=>$('file-input').click();
 $('file-input').onchange=e=>{void fileSelected(e.target.files[0]);e.target.value='';};

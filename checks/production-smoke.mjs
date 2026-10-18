@@ -17,6 +17,9 @@ try{
  const result=await prediction;assert.equal(result.status(),200);
  await page.waitForFunction(()=>window.__pillCounterTest.state().analyzed&&!window.__pillCounterTest.state().busy,{},{timeout:10000});
  const state=await page.evaluate(()=>window.__pillCounterTest.state());assert.equal(state.count,8);
+ assert.equal(await page.locator('#retake').innerText(),'다시 촬영');
+ assert.equal(await page.locator('#other-photo').innerText(),'다른 사진으로 세기');
+ assert(await page.locator('#retake').isVisible());assert(await page.locator('#other-photo').isVisible());
  for(const name of ['photo-gestures','app-navigation'])assert.equal((await context.request.get(base+'/src/'+name+'.js')).status(),200);
  const frameBefore=await page.locator('#stage').boundingBox();
  await page.locator('#zoom-in').click();
@@ -26,7 +29,7 @@ try{
  await page.keyboard.press('Escape');await page.waitForFunction(()=>window.__pillCounterTest.state().zoom===1);
  await page.locator('#save-photo').click();await page.keyboard.press('Escape');
  await page.waitForFunction(()=>!document.getElementById('save-dialog').open);
- await page.keyboard.press('Escape');await page.locator('#leave-confirm').click();
+ await page.locator('#photo-back').click();await page.locator('#leave-confirm').click();
  await page.keyboard.press('Escape');await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
  await page.locator('#exit-cancel').click();
  assert.deepEqual(errors,[]);

@@ -31,6 +31,8 @@ await page.route('**/api/analyze',async route=>{
  await route.fulfill({json:{objects:[{x:300,y:300,r:40,source:'auto',confidence:.99}],processingTimeMs:5}});
 });
 await page.addInitScript(()=>{
+ window.testHistoryPushes=0;const originalPush=history.pushState.bind(history);
+ history.pushState=(...args)=>{window.testHistoryPushes++;return originalPush(...args);};
  if(location.search.includes('fallback'))Object.defineProperty(window,'CloseWatcher',{value:undefined});
  window.testOrientation='portrait';window.testConstraints=[];
  Object.defineProperty(navigator.mediaDevices,'getUserMedia',{configurable:true,value:async constraints=>{
@@ -100,6 +102,16 @@ try{
   if(path==='fallback')await page.locator('#photo-tab').click();
   await back();await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
   await page.locator('#exit-cancel').click();
+  if(path==='fallback'){
+   const baseline=await page.evaluate(()=>({pushes:window.testHistoryPushes,length:history.length}));
+   // No intervening page taps: reproduce the repeated hardware-Back path
+   // which previously pushed a fresh, browser-skippable history entry.
+   for(let i=0;i<3;i++){
+    await back();await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
+    await back();await page.waitForFunction(()=>!document.getElementById('exit-dialog').open);
+   }
+   assert.deepEqual(await page.evaluate(()=>({pushes:window.testHistoryPushes,length:history.length})),baseline);
+  }
   await page.locator('#camera-open').click();await page.waitForFunction(()=>!document.getElementById('shutter').disabled);
   await back();await page.waitForFunction(()=>!window.__pillCounterTest.state().captureMode);
   assert.equal(await page.locator('#exit-dialog').isVisible(),false);
@@ -112,6 +124,20 @@ try{
   await back();await page.waitForFunction(()=>!window.__pillCounterTest.state().busy);delayAnalysis=0;
   assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().loaded),true);
   await page.locator('#reanalyze').click();await settled();
+  assert(await page.locator('#retake').isVisible());assert(await page.locator('#other-photo').isVisible());
+  await page.locator('#retake').click();await page.waitForFunction(()=>!document.getElementById('shutter').disabled);
+  await back();await page.waitForFunction(()=>!window.__pillCounterTest.state().captureMode);
+  assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().count),1);
+  const chooserPromise=page.waitForEvent('filechooser');await page.locator('#other-photo').click();
+  await (await chooserPromise).setFiles([]);
+  assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().count),1);
+  const nextChooser=page.waitForEvent('filechooser');await page.locator('#other-photo').click();
+  await (await nextChooser).setFiles(fileURLToPath(new URL('../examples/mediseg-8-pills.png',import.meta.url)));
+  await page.waitForFunction(()=>window.__pillCounterTest.state().width===640);await settled();
+  assert.equal(await page.evaluate(()=>window.__pillCounterTest.state().width),640);
+  await page.locator('#photo-back').click();await page.waitForFunction(()=>document.getElementById('leave-dialog').open);
+  await page.locator('#leave-cancel').click();
+  if(path==='fallback')await page.screenshot({path:results+'/result-new-photo-actions.png',fullPage:true});
   await page.locator('[data-mode="add"]').click();await back();
   await page.waitForFunction(()=>window.__pillCounterTest.state().mode==='view');
   await page.locator('#save-photo').click();await page.waitForFunction(()=>document.getElementById('save-dialog').open);
