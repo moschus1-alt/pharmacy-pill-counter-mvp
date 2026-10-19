@@ -81,7 +81,7 @@ function setupAutomaticConnection() {
     $('pc-auto-name').textContent=session.name;
     $('pc-auto-printer').textContent=receiver?.printerName||'유팜데일리에서 라벨 수신을 시작해 주세요.';
     $('pc-auto-expiry').textContent=`연결 만료: ${new Date(session.expiresAt).toLocaleString('ko-KR')}`;
-    const url=new URL('/',location.origin);url.hash=`pc=${session.id}.${session.token}`;
+    const url=new URL(document.body.dataset.inference==='local'?'/local.html':'/',location.origin);url.hash=`pc=${session.id}.${session.token}`;
     if(pairUrl!==url.href){pairUrl=url.href;const qr=window.qrcode(0,'M');qr.addData(pairUrl);qr.make();$('pc-auto-qr').innerHTML=qr.createSvgTag({cellSize:4,margin:16,scalable:true});}
   }
   async function refresh() {

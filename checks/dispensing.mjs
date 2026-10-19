@@ -56,6 +56,8 @@ clock+=9*60*60*1000;assert.equal((await call('pair',sender)).status,410);clock=D
 await call('close',owner);values.clear();
 console.log('PASS GS1 decoding, date/quantity validation, station authorization, duplicate protection, acknowledgement and expiry');
 
+let analysisRequests=0;
+const localCounter=process.env.LOCAL_COUNTER==='1';
 const root=fileURLToPath(new URL('../dist/',import.meta.url)),results=fileURLToPath(new URL('../.test-results/',import.meta.url));await mkdir(results,{recursive:true});
 const server=createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
@@ -64,10 +66,10 @@ const server=createServer(async(req,res)=>{
     res.status=value=>{res.statusCode=value;return res;};res.json=value=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));};
     return relay(req,res);
   }
-  if(url.pathname==='/api/analyze') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({objects:Array.from({length:8},(_,i)=>({x:80+i*50,y:250,r:15,source:'auto'})),processingTimeMs:1}));return;}
+  if(url.pathname==='/api/analyze') {analysisRequests++;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({objects:Array.from({length:8},(_,i)=>({x:80+i*50,y:250,r:15,source:'auto'})),processingTimeMs:1}));return;}
   try {
     const path=resolve(root,'.'+(url.pathname==='/'?'/index.html':url.pathname));if(!path.startsWith(resolve(root)+sep)){res.writeHead(403).end();return;}
-    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png'})[extname(path)]||'application/octet-stream');res.end(await readFile(path));
+    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.wasm':'application/wasm'})[extname(path)]||'application/octet-stream');res.end(await readFile(path));
   }catch{res.writeHead(404).end();}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
@@ -98,7 +100,7 @@ try {
 
   assert.equal(await desktop.locator('#pc-banner-title').innerText(),'이 PC에서 라벨 받는 중');
   await desktop.locator('#printer-dialog-close').click();
-  await mobile.goto(pairing);await mobile.waitForFunction(()=>document.getElementById('pc-connection-status').textContent.includes('연결됨'));
+  await mobile.goto(localCounter?pairing.replace('/?test','/local.html?test'):pairing);await mobile.waitForFunction(()=>document.getElementById('pc-connection-status').textContent.includes('연결됨'));
   assert.equal(await mobile.evaluate(()=>location.hash),'');
   assert.equal(await mobile.locator('#pc-banner-title').innerText(),'PC 연결됨');
   assert.match(await mobile.locator('#pc-banner-detail').innerText(),/약국 라벨 PC/);
@@ -178,6 +180,7 @@ try {
   assert.equal(await mobile.locator('#pc-connection-banner').getAttribute('data-state'),'warning');clock=Date.now();
   await mobile.locator('#pc-connection-banner').click();await mobile.locator('#pc-disconnect').click();await mobile.locator('#printer-dialog-close').click();
   assert.equal(await mobile.locator('#pc-banner-title').innerText(),'PC 연결 안 됨');
+  if(localCounter){assert.equal(analysisRequests,0);console.log('PASS dispensing with actual on-device model; no analysis uploads');}
   assert.deepEqual(errors,[]);
   console.log('PASS two-device QR pairing → barcode → photo count → confirmation → relay → PC print → phone acknowledgement; barcode library; responsive layouts; no browser errors');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

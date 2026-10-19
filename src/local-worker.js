@@ -29,7 +29,7 @@ onmessage=async({data})=>{
     tensor=new runtime.Tensor(tensorData,[1,832,832,3]);
     outputs=await model.run(tensor);
     const raw=await outputs[0].data();
-    const inferred=performance.now(),objects=algorithm.postprocess(raw,data.image.width,data.image.height);
+    const inferred=performance.now(),objects=algorithm.postprocess(raw,data.image.width,data.image.height,data.confidence??.5);
     postMessage({type:'result',objects,timings:{preprocessMs:prepared-started,inferenceMs:inferred-prepared,postprocessMs:performance.now()-inferred,totalMs:performance.now()-started},backend});
    }finally{tensor?.delete();outputs?.forEach(t=>t.delete());}
   }

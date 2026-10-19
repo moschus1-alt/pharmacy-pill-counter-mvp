@@ -1,4 +1,5 @@
 import {PillDetector} from './image-detector.js';
+import {LocalPillDetector} from './local-detector.js';
 import {CAMERA_ASPECT_RATIO,cameraConstraints,captureCameraFrame as captureToFrame} from './camera-frame.js';
 import {photoGestures} from './photo-gestures.js';
 import {appNavigation} from './app-navigation.js';
@@ -9,7 +10,8 @@ document.documentElement.dataset.deviceView=pcView?'pc':'mobile';
 document.documentElement.dataset.inputDevice=detectPcDevice()?'pc':'mobile';
 document.documentElement.style.setProperty('--camera-aspect',String(CAMERA_ASPECT_RATIO));
 const $=id=>document.getElementById(id);
-const detector=new PillDetector();
+const localInference=document.body.dataset.inference==='local';
+const detector=localInference?new LocalPillDetector():new PillDetector();
 const source=document.createElement('canvas');
 const canvas=$('canvas'),ctx=canvas.getContext('2d'),video=$('video');
 let loaded=false,analyzed=false,manualEdited=false,busy=false,objects=[],undoStack=[],mode='view',zoom=1,scale=1;
@@ -253,12 +255,12 @@ async function liveTick(session){
  const started=performance.now(),frame=document.createElement('canvas');
  try{
   captureToFrame(frame,video);
-  const result=await detector.analyze(frame.getContext('2d').getImageData(0,0,frame.width,frame.height),{confidence:.5,jpeg:true,timeoutMs:20000});
+  const result=await detector.analyze(frame.getContext('2d').getImageData(0,0,frame.width,frame.height),{confidence:.5,jpeg:true,timeoutMs:20000},text=>{if(session===liveSession)$('live-hint').textContent=text;});
   if(session!==liveSession)return;liveCount=result.objects.length;liveAt=Date.now();liveErrors=0;message('');update();
   $('live-hint').textContent=`방금 분석 · ${(result.processingTimeMs/1000).toFixed(1)}초 소요 · 휴대폰을 고정해 주세요`;
  }catch(error){
-  if(session!==liveSession)return;liveErrors++;liveCount=null;update();setStatus('연결 확인 중','error');$('live-hint').textContent='분석 연결을 기다리고 있어요…';
-  if(liveErrors>=3){stopLive();update();message('분석 연결이 원활하지 않아 멈췄어요. 인터넷 연결을 확인하고 다시 시작해 주세요.',true);return;}
+  if(session!==liveSession)return;liveErrors++;liveCount=null;update();setStatus(localInference?'인식 준비 중':'연결 확인 중','error');$('live-hint').textContent=localInference?error.message:'분석 연결을 기다리고 있어요…';
+  if(liveErrors>=3){stopLive();update();message(localInference?'휴대폰 인식을 잠시 멈췄어요. 사진으로 세기를 이용하거나 다시 시작해 주세요.':'분석 연결이 원활하지 않아 멈췄어요. 인터넷 연결을 확인하고 다시 시작해 주세요.',true);return;}
  }
  if(session===liveSession&&stream){const delay=liveErrors?2000:Math.max(150,1000-(performance.now()-started));liveTimer=setTimeout(()=>void liveTick(session),delay);}
 }
@@ -345,7 +347,7 @@ document.addEventListener('visibilitychange',()=>{
  }else if(captureMode&&!captureStream&&!captureStarting)void startCaptureCamera();
  else if(currentTab==='live'&&!stream&&!starting)void startLive();
 });
-window.addEventListener('pagehide',()=>{imageRequest++;captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();$('save-dialog').close();releaseSave();});
+window.addEventListener('pagehide',()=>{imageRequest++;captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();detector.dispose();$('save-dialog').close();releaseSave();});
 window.addEventListener('pageshow',()=>{update();fit();if(captureMode&&!captureStream&&!captureStarting&&!document.hidden)void startCaptureCamera();});
 if(new URLSearchParams(location.search).has('test'))window.__pillCounterTest={state:()=>({loaded,analyzed,busy,mode,zoom,panX,panY,captureMode,captureStarting,captureActive:!!captureStream,objects:clone(),count:objects.length,currentTab,liveCount,liveAt,streamActive:!!stream,starting,confirmed,width:source.width,height:source.height,analysis}),fileSelected};
 update();

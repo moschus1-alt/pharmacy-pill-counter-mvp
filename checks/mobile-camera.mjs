@@ -213,6 +213,7 @@ try{
  console.log('PASS gallery, tap editing, Back during camera permission wait and denial');
  await page.route('**/before',route=>route.fulfill({contentType:'text/html',body:'<a href="/?test">Open counter</a>'}));
  await page.goto(base+'/before');await page.locator('a').click();
+ await page.waitForFunction(()=>!!window.__pillCounterTest);
  await page.locator('#photo-tab').click();await page.keyboard.press('Escape');
  await page.locator('#exit-confirm').click();await page.waitForURL(base+'/before');
  console.log('PASS explicit exit reaches previous page without another prompt');
