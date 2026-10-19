@@ -169,4 +169,9 @@ export function createRelay(store=storage,now=()=>Date.now()) {
   };
 }
 
-export default createRelay();
+// Stop old receivers with 410 before any Blob operation. Old Python clients
+// recognize expiry and stop their loops. New clients never call this route.
+export default function retiredRelay(req,res) {
+  res.setHeader('Cache-Control','no-store');
+  return res.status(410).json({error:'클라우드 라벨 연결은 종료됐어요. PC 직접 연결 프로그램으로 바꿔 주세요.',code:'DIRECT_CONNECTION_REQUIRED'});
+}
