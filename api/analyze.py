@@ -1,4 +1,4 @@
-"""Image inference only. Model bytes and submitted images are never served or saved."""
+"""Image inference API. Photos are not saved; model downloads use static assets."""
 from http.server import BaseHTTPRequestHandler
 from io import BytesIO
 import json
@@ -25,7 +25,7 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        self.reply(200, {'engine':'server-inference','photoStorage':False,'modelDownload':False})
+        self.reply(200, {'engine':'server-inference','photoStorage':False,'modelDownload':True})
 
     def do_POST(self):
         global _predictor

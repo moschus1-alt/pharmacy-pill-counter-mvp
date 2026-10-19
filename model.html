@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f7f4"><title>모델 다운로드 · 알약 카운터</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="model.css"></head>
+<body><header class="header"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">✚</span> 알약 카운터</a><a class="model-back" href="./">카운터로</a></header>
+<main class="model-main"><section class="model-card" aria-labelledby="model-title"><p class="model-kicker">AI 모델</p><h1 id="model-title">모델 다운로드</h1><p class="model-intro">현재 알약 인식에 사용하는 모델을 받아요.</p>
+<dl class="model-facts"><div><dt>파일</dt><dd>pill-counter-model.tflite</dd></div><div><dt>크기</dt><dd id="model-size">확인 중…</dd></div><div><dt>이 기기 저장</dt><dd id="model-cached">확인 중…</dd></div></dl>
+<button id="model-download" class="primary full" disabled>모델 받기</button><button id="model-cancel" class="secondary full" hidden>다운로드 중지</button>
+<progress id="model-progress" max="100" value="0" hidden aria-label="모델 다운로드 진행률"></progress><p id="model-status" role="status" aria-live="polite">모델 정보를 확인하고 있어요.</p>
+<button id="model-save" class="secondary full" hidden>모델 파일로 저장</button><button id="model-remove" class="text-button full" hidden>이 기기에 저장한 모델 삭제</button>
+<p class="model-note">한 번 받은 모델은 이 브라우저에 저장해요. 브라우저 데이터가 삭제되면 다시 받아야 해요.</p>
+<p class="model-note">현재 카운팅은 서버에서 실행돼요. 모델 다운로드만으로 휴대폰 분석으로 전환되지는 않아요.</p>
+<details class="model-details"><summary>모델 정보</summary><p>서버와 같은 TFLite 모델 · 입력 832 × 832</p><code id="model-hash"></code><a href="private-model-profile.json" download>전처리 설정 파일 받기</a></details>
+</section></main><script type="module" src="src/model-download.js"></script></body></html>

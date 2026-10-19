@@ -2,7 +2,7 @@
 <html lang="ko">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f7f4"><title>알약 카운터</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="dispensing.css"></head>
 <body>
-<header class="header"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">✚</span> 알약 카운터</a><span class="header-note">한눈에, 정확하게 확인</span></header>
+<header class="header"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">✚</span> 알약 카운터</a><div class="header-tools"><span class="header-note">한눈에, 정확하게 확인</span><a class="model-link" href="model.html">AI 모델</a></div></header>
 <main>
 <nav class="tabs" aria-label="카운팅 방식"><button id="photo-tab" class="selected" aria-pressed="true">사진으로 세기</button><button id="live-tab" aria-pressed="false"><span class="live-dot" aria-hidden="true"></span>실시간 카운팅</button></nav>
 <section class="counter" aria-label="알약 수량"><div><p id="count-label">사진 속 알약</p><div class="count-line"><output id="count" aria-live="polite">—</output><span>개</span></div></div><div class="count-detail"><span id="status" class="status">시작 전</span><p id="count-meta">사진을 찍거나 선택해 주세요</p></div></section>

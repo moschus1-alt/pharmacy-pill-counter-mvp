@@ -4,7 +4,9 @@
   "buildCommand": "node build.mjs",
   "installCommand": "npm ci --omit=dev",
   "outputDirectory": "dist",
-  "regions": ["icn1"],
+  "regions": [
+    "icn1"
+  ],
   "functions": {
     "api/product-lookup.js": {
       "includeFiles": "data/**"
@@ -16,6 +18,24 @@
     }
   },
   "headers": [
+    {
+      "source": "/model-download/:version/:part",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/model-download/manifest.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
     {
       "source": "/models/pill-deim-27940a50.:part",
       "headers": [
