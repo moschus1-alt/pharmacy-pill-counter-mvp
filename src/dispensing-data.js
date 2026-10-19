@@ -13,10 +13,16 @@ export function gs1Expiry(value) {
   return `${year}-${String(month).padStart(2,'0')}-${String(day||last).padStart(2,'0')}`;
 }
 
+// ZXing returns the leading GS1 FNC1 as ASCII GS (29). Native decoders may
+// omit it or include an AIM identifier. Keep internal GS separators intact.
+export function barcodePayload(input) {
+  return String(input).trim().replace(/^\](?:C1|d2|Q3)/,'').replace(/^\x1d+(?=01\d{14})/,'');
+}
+
 // Only decode known GS1 application identifiers. Never guess an AI inside a
 // variable-length lot/serial number; FNC1 is required to delimit those fields.
 export function parseProductBarcode(input) {
-  const raw=String(input).trim().replace(/^\](?:C1|d2|Q3)/,'');
+  const raw=barcodePayload(input);
   if (!raw || raw.length>200) throw Error('바코드를 200자 이내로 입력해 주세요.');
   const fields={};
   if (/^\(\d{2,4}\)/.test(raw)) {

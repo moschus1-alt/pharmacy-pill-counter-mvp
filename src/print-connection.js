@@ -16,10 +16,18 @@ export async function relayRequest(action,session={},data={},get=false) {
 }
 
 export function printConnection({onChange,onOpenDispensing}) {
-  let sender=readSession(senderKey),station=readSession(stationKey),pollTimer=null,polling=false,activeJob=null,jobs=[],pairURL='',disposed=false;
+  let sender=readSession(senderKey),station=readSession(stationKey),pollTimer=null,polling=false,activeJob=null,jobs=[],pairURL='',disposed=false,connectionTimer=null,stationIssue=false;
   const connectionMessage=text=>$('printer-connection-message').textContent=text;
   function sync() {
     if(sender?.expiresAt<=Date.now()){sender=null;saveSession(senderKey,null);}
+    if(station?.expiresAt<=Date.now()){station=null;saveSession(stationKey,null);$('station-pairing').hidden=true;}
+    const state=sender?'connected':station?(stationIssue?'warning':'receiving'):'disconnected';
+    const title=sender?'PC 연결됨':station?(stationIssue?'PC 수신 연결 확인 필요':'이 PC에서 라벨 받는 중'):'PC 연결 안 됨';
+    const detail=sender?`${sender.name} · PC의 출력 대기 화면을 열어 두세요.`:station?`${station.name} · ${stationIssue?'인터넷 연결을 확인해 주세요.':'휴대폰을 연결하려면 QR을 보여 주세요.'}`:'라벨을 받을 PC를 연결해 주세요.';
+    $('pc-connection-banner').dataset.state=state;
+    $('pc-banner-title').textContent=title;$('pc-banner-detail').textContent=detail;
+    $('pc-banner-action').textContent=sender?'연결 관리 ›':station?'연결 QR ›':'연결하기 ›';
+    $('dispense-count-connection').textContent=sender?`출력 PC: ${sender.name} · 연결됨`:station?title:'출력 PC 연결 안 됨';
     $('pc-connection-status').textContent=sender?`${sender.name} 연결됨`:'출력 PC를 연결해 주세요';
     $('pc-connection-dot').classList.toggle('connected',!!sender);
     $('pc-disconnect').hidden=!sender;
@@ -68,12 +76,13 @@ export function printConnection({onChange,onOpenDispensing}) {
     try {
       const result=await relayRequest('jobs',{id:station.id,token:station.ownerToken},{},true);
       if(current!==station?.id)return;
+      if(stationIssue){stationIssue=false;sync();}
       const changed=JSON.stringify(jobs)!==JSON.stringify(result.jobs);jobs=result.jobs;
       if(changed)renderJobs();
       $('station-status').textContent=jobs.length?`${jobs.length}건의 라벨이 도착했어요.`:'휴대폰의 라벨 전송을 기다리고 있어요.';
     }catch(error) {
       if(current!==station?.id)return;
-      $('station-status').textContent=error.message;
+      stationIssue=true;sync();$('station-status').textContent=error.message;
       if(error.status===410||error.status===403){station=null;saveSession(stationKey,null);$('station-pairing').hidden=true;connectionMessage(error.message);sync();}
     }finally {
       polling=false;clearTimeout(pollTimer);
@@ -88,7 +97,7 @@ export function printConnection({onChange,onOpenDispensing}) {
     $('received-label-done').disabled=true;$('received-label-print').disabled=false;
     $('received-label-dialog').showModal();
   }
-  $('printer-settings').onclick=$('pc-connect-inline').onclick=()=>{$('printer-dialog').showModal();if(station)showPairing();};
+  $('pc-connection-banner').onclick=$('printer-settings').onclick=$('pc-connect-inline').onclick=()=>{$('printer-dialog').showModal();if(station)showPairing();};
   $('printer-dialog-close').onclick=()=>$('printer-dialog').close();
   $('pc-link-apply').onclick=async()=>{
     $('pc-link-apply').disabled=true;
@@ -100,7 +109,7 @@ export function printConnection({onChange,onOpenDispensing}) {
     if(station){showPairing();return;}
     $('station-create').disabled=true;connectionMessage('PC 연결을 준비하고 있어요…');
     try {
-      station=await relayRequest('create',{}, {name:$('station-name').value});
+      stationIssue=false;station=await relayRequest('create',{}, {name:$('station-name').value});
       saveSession(stationKey,station);sync();showPairing();onOpenDispensing();connectionMessage('휴대폰 카메라로 QR을 읽어 연결해 주세요.');void poll();
     }catch(error){connectionMessage(error.message);}
     finally{$('station-create').disabled=false;}
@@ -132,9 +141,9 @@ export function printConnection({onChange,onOpenDispensing}) {
     try{await relayRequest('printed',{id:station.id,token:station.ownerToken},{jobId:activeJob.id});jobs=jobs.filter(x=>x.id!==activeJob.id);renderJobs();$('received-label-dialog').close();activeJob=null;}
     catch(error){$('received-label-status').textContent=error.message;$('received-label-done').disabled=false;}
   };
-  window.addEventListener('pagehide',()=>{disposed=true;clearTimeout(pollTimer);});
-  window.addEventListener('pageshow',()=>{disposed=false;if(station)void poll();});
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&station){clearTimeout(pollTimer);void poll();}});
+  window.addEventListener('pagehide',()=>{disposed=true;clearTimeout(pollTimer);clearInterval(connectionTimer);});
+  window.addEventListener('pageshow',()=>{disposed=false;sync();clearInterval(connectionTimer);connectionTimer=setInterval(sync,30000);if(station)void poll();});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){sync();if(station){clearTimeout(pollTimer);void poll();}}});
   queueMicrotask(()=>{
     sync();if(station){onOpenDispensing();void poll();}
     const hash=new URLSearchParams(location.hash.slice(1));
@@ -143,10 +152,21 @@ export function printConnection({onChange,onOpenDispensing}) {
       onOpenDispensing();void pair(link).catch(error=>{connectionMessage(error.message);$('printer-dialog').showModal();});
     }
   });
+  async function senderRequest(action,data,get=false) {
+    if(!sender)throw Error('출력 PC를 먼저 연결해 주세요.');
+    const current=sender;
+    try{return await relayRequest(action,current,data,get);}
+    catch(error){
+      if(sender===current&&(error.status===403||error.status===410)){
+        sender=null;saveSession(senderKey,null);sync();connectionMessage('PC 연결이 종료됐어요. 다시 연결해 주세요.');
+      }
+      throw error;
+    }
+  }
   return {
     connected:()=>!!sender&&sender.expiresAt>Date.now(),
-    async send(label,jobId){if(!sender)throw Error('출력 PC를 먼저 연결해 주세요.');return relayRequest('submit',sender,{label,jobId});},
-    async status(jobId){if(!sender)throw Error('출력 PC 연결이 해제됐어요.');return relayRequest('status',sender,{jobId},true);},
+    async send(label,jobId){return senderRequest('submit',{label,jobId});},
+    async status(jobId){return senderRequest('status',{jobId},true);},
     refresh:sync
   };
 }

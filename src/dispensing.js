@@ -1,5 +1,5 @@
 import {dispensingView,dispensingDialogs} from './dispensing-view.js';
-import {parseProductBarcode,localDate,labelIssues,validCount} from './dispensing-data.js';
+import {parseProductBarcode,barcodePayload,localDate,labelIssues,validCount} from './dispensing-data.js';
 import {createLabel,labelFits,printLabel} from './label-view.js';
 import {barcodeScanner} from './barcode-scanner.js';
 import {printConnection} from './print-connection.js';
@@ -98,7 +98,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     const issues=labelIssues(data);
     if(lookupPending)issues.unshift('제품 정보를 조회하고 있어요.');
     $('dispense-start-count').disabled=sending||lookupPending;
-    if(product?.raw!==$('product-barcode').value.trim().replace(/^\](?:C1|d2|Q3)/,''))issues.unshift('입력한 바코드를 적용해 주세요.');
+    if(product?.raw!==barcodePayload($('product-barcode').value))issues.unshift('입력한 바코드를 적용해 주세요.');
     // Hidden tabs have no layout; check again when the tab becomes visible.
     if(!$('dispense-panel').hidden&&!labelFits(paper))issues.push('내용이 라벨 크기를 넘어가요. 큰 라벨을 선택하거나 제품명·함량을 줄여 주세요.');
     $('dispense-count').value=count===null?'—':String(count);

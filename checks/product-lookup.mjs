@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright';
 import handler,{lookupProduct} from '../api/product-lookup.js';
 import {normalizeProductCode} from '../src/product-code.js';
+import {gs1Matrix} from './gs1-datamatrix.mjs';
 import {parseProductBarcode} from '../src/dispensing-data.js';
 
 const first='8806723002015',second='8806435016010';
@@ -15,6 +16,12 @@ assert.equal(normalizeProductCode('8806723002016'),null);
 assert.equal(normalizeProductCode('199303108'),null);
 assert.equal(normalizeProductCode('18806723002012'),'18806723002012');
 assert.equal(parseProductBarcode(']d2010'+first+'1729123110LOT-A\x1d21SERIAL').code,'0'+first);
+const gs1='010'+first+'1729123110LOT-A\x1d21SERIAL';
+for(const prefix of ['\x1d',']d2\x1d',']d2','']) {
+  const parsed=parseProductBarcode(prefix+gs1);
+  assert.equal(parsed.code,'0'+first);assert.equal(parsed.lot,'LOT-A');assert.equal(parsed.expiry,'2029-12-31');
+}
+assert.throws(()=>parseProductBarcode('\x00'+gs1));
 const fake={source:{asOf:'2026-08-31'},entries:{[first]:[['Name','Maker','5mg','10','정','PTP','id','','9999-12-31']]}};
 assert.equal(lookupProduct(first,fake).status,'found');
 fake.entries[first][0][8]='2025-01-01';assert.equal(lookupProduct(first,fake).status,'historical');
@@ -60,7 +67,19 @@ try {
   await page.goto(base);await page.locator('#dispense-tab').click();
   const apply=async code=>{await page.locator('#product-barcode').fill(code);await page.locator('#barcode-apply').click();};
   const settled=()=>page.waitForFunction(()=>!document.getElementById('dispense-start-count').disabled);
-  await apply(']d2010'+first+'1729123110LOT-A\x1d21SERIAL');await settled();
+  const decoded=await page.evaluate(async pixels=>{
+    const scale=10,margin=30,canvas=document.createElement('canvas');canvas.width=canvas.height=pixels.length*scale+margin*2;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='black';
+    pixels.forEach((row,y)=>row.forEach((set,x)=>{if(set)ctx.fillRect(margin+x*scale,margin+y*scale,scale,scale);}));
+    return (await new ZXingBrowser.BrowserMultiFormatReader().decodeFromImageUrl(canvas.toDataURL())).getText();
+  },gs1Matrix(gs1));
+  assert.equal(decoded,'\x1d'+gs1);
+  // This is the exact scanner output that previously threw the unsupported error.
+  await apply(decoded);await settled();
+  assert.doesNotMatch(await page.locator('#label-validation').innerText(),/바코드를 적용/);
+  assert.equal(await page.locator('#pc-banner-title').innerText(),'PC 연결 안 됨');
+  await page.locator('#pc-connection-banner').click();assert(await page.locator('#printer-dialog').isVisible());await page.locator('#printer-dialog-close').click();
+  console.log('PASS real GS1 DataMatrix image → shipped ZXing decoder → leading FNC1 → product lookup');
   assert.equal(await page.locator('#product-name').inputValue(),a.body.product.name);
   assert.equal(await page.locator('#product-strength').inputValue(),'500밀리그램');
   assert.equal(await page.locator('#product-lot').inputValue(),'LOT-A');

@@ -1,6 +1,11 @@
 export const dispensingView=`
 <section id="dispense-panel" aria-labelledby="dispense-title" hidden>
   <div class="dispense-heading"><div><p class="eyebrow">포장부터 라벨까지</p><h1 id="dispense-title">의약품예제소분</h1></div><button id="printer-settings" class="secondary">PC·프린터 연결</button></div>
+  <button id="pc-connection-banner" type="button" class="pc-connection-banner" data-state="disconnected">
+    <svg class="pc-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M8 21h8M12 16v5"/></svg>
+    <span class="pc-banner-copy" role="status" aria-live="polite"><span class="pc-banner-label">PC 라벨 출력</span><strong id="pc-banner-title">연결 안 됨</strong><span id="pc-banner-detail">라벨을 받을 PC를 연결해 주세요.</span></span>
+    <span id="pc-banner-action" class="pc-banner-action">연결하기 ›</span>
+  </button>
   <ol class="dispense-steps" aria-label="소분 순서"><li>1 제품 확인</li><li>2 수량 확인</li><li>3 라벨 출력</li></ol>
   <form id="dispense-form">
     <section class="dispense-card" aria-labelledby="product-heading">
@@ -48,7 +53,7 @@ export const dispensingView=`
   </form>
   <section id="pc-station-panel" class="dispense-card pc-station" hidden aria-labelledby="pc-station-heading"><div class="section-title"><h2 id="pc-station-heading">PC 라벨 출력 대기</h2><button id="station-close" class="text-button">연결 종료</button></div><p class="helper">이 화면을 열어 두세요. 휴대폰에서 보낸 라벨이 여기에 도착해요.</p><p id="station-status" role="status" class="helper"></p><div id="station-jobs"></div></section>
 </section>
-<div id="dispense-count-banner" class="dispense-count-banner" hidden><div><strong>소분용 수량 카운팅</strong><p id="dispense-count-product"></p></div><button id="dispense-return" class="secondary">라벨로 돌아가기</button></div>
+<div id="dispense-count-banner" class="dispense-count-banner" hidden><div><strong>소분용 수량 카운팅</strong><p id="dispense-count-product"></p><p id="dispense-count-connection"></p></div><button id="dispense-return" class="secondary">라벨로 돌아가기</button></div>
 `;
 
 export const dispensingDialogs=`

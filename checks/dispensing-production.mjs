@@ -32,7 +32,10 @@ try {
   const pairing=await desktop.evaluate(()=>{const station=JSON.parse(sessionStorage.getItem('pill-label-station-v1'));return `${location.origin}/?test#pc=${station.id}.${station.pairToken}`;});
   await desktop.locator('#printer-dialog-close').click();
   await mobile.goto(pairing,{waitUntil:'networkidle'});await mobile.waitForFunction(()=>document.getElementById('pc-connection-status').textContent.includes('연결됨'));
-  await mobile.locator('#product-barcode').fill('(01)08806723002015(17)291231(10)TEST001');await mobile.locator('#barcode-apply').click();
+  assert.equal(await mobile.locator('#pc-banner-title').innerText(),'PC 연결됨');
+  assert.match(await mobile.locator('#pc-banner-detail').innerText(),/기능 검증용 PC/);
+  assert.equal(await desktop.locator('#pc-banner-title').innerText(),'이 PC에서 라벨 받는 중');
+  await mobile.locator('#product-barcode').fill('\x1d01088067230020151729123110TEST001');await mobile.locator('#barcode-apply').click();
   await mobile.waitForFunction(()=>document.getElementById('barcode-status').textContent.includes('제품 정보를 찾았어요'));
   const actualProduct=await mobile.locator('#product-name').inputValue();
   assert.equal(actualProduct,'약국용타이레놀정500mg(아세트아미노펜)');

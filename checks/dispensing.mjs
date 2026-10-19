@@ -65,13 +65,20 @@ try {
   await desktop.waitForFunction(()=>!!sessionStorage.getItem('pill-label-station-v1'));
   const pairing=await desktop.evaluate(()=>{const station=JSON.parse(sessionStorage.getItem('pill-label-station-v1'));return `${location.origin}/?test#pc=${station.id}.${station.pairToken}`;});
   assert(await desktop.locator('#station-qr svg').isVisible());
+  assert.equal(await desktop.locator('#pc-banner-title').innerText(),'이 PC에서 라벨 받는 중');
   await desktop.locator('#printer-dialog-close').click();
   await mobile.goto(pairing);await mobile.waitForFunction(()=>document.getElementById('pc-connection-status').textContent.includes('연결됨'));
   assert.equal(await mobile.evaluate(()=>location.hash),'');
+  assert.equal(await mobile.locator('#pc-banner-title').innerText(),'PC 연결됨');
+  assert.match(await mobile.locator('#pc-banner-detail').innerText(),/약국 라벨 PC/);
+  await mobile.locator('#label-size').scrollIntoViewIfNeeded();
+  const bannerBox=await mobile.locator('#pc-connection-banner').boundingBox();assert(bannerBox.y>=0&&bannerBox.y<30);
+  await mobile.locator('#pc-connection-banner').click();assert(await mobile.locator('#printer-dialog').isVisible());await mobile.locator('#printer-dialog-close').click();
   await mobile.locator('#product-barcode').fill('(01)08801234567890(17)291231(10)LOT001');await mobile.locator('#barcode-apply').click();
   assert.equal(await mobile.locator('#product-lot').inputValue(),'LOT001');assert.equal(await mobile.locator('#product-expiry').inputValue(),'2029-12-31');
   await mobile.locator('#product-name').fill('테스트정');await mobile.locator('#product-strength').fill('500 mg');await mobile.locator('#dispense-start-count').click();
   assert(await mobile.locator('#dispense-count-banner').isVisible());
+  assert.match(await mobile.locator('#dispense-count-connection').innerText(),/약국 라벨 PC.*연결됨/);
   await mobile.locator('#file-input').setInputFiles(fileURLToPath(new URL('../examples/mediseg-8-pills.png',import.meta.url)));
   await mobile.waitForFunction(()=>window.__pillCounterTest.state().analyzed&&!window.__pillCounterTest.state().busy);
   await mobile.locator('#confirm').click();await mobile.waitForFunction(()=>document.getElementById('dispense-count').value==='8');
@@ -94,6 +101,8 @@ try {
   assert.equal(decoded,'8801234567890');
   for(const width of [320,390,430,1280]){await mobile.setViewportSize({width,height:844});assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow at '+width);}
   await mobile.setViewportSize({width:390,height:844});await mobile.screenshot({path:results+'/dispensing-mobile.png',fullPage:true});await desktop.screenshot({path:results+'/dispensing-pc.png',fullPage:true});
+  await mobile.locator('#pc-connection-banner').click();await mobile.locator('#pc-disconnect').click();await mobile.locator('#printer-dialog-close').click();
+  assert.equal(await mobile.locator('#pc-banner-title').innerText(),'PC 연결 안 됨');
   assert.deepEqual(errors,[]);
   console.log('PASS two-device QR pairing → barcode → photo count → confirmation → relay → PC print → phone acknowledgement; barcode library; responsive layouts; no browser errors');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
