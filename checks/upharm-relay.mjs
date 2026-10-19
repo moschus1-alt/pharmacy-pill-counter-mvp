@@ -22,18 +22,18 @@ async function call(action,session={},data={},get=false){const args={action,stat
 const label={code:'8806723002015',name:'연동검증정',count:8,strength:'500 mg',manufacturer:'',lot:'LOT001',packedOn:localDate(),expiry:'2029-12-31',useBy:'',size:'dk22210',widthMm:29,heightMm:90,copies:1};
 const directory=await mkdtemp(join(tmpdir(),'upharm-relay-'));
 try {
-  for(const scenario of ['success','lost-ack','crash','printer-error']) {
+  for(const [profile,scenario] of ['upharm','standalone'].flatMap(profile=>['success','lost-ack','crash','printer-error'].map(scenario=>[profile,scenario]))) {
     const station=(await call('create')).body,owner={id:station.id,token:station.ownerToken},sender={id:station.id,token:station.pairToken};
     const jobs=[];
     for(let i=0;i<(scenario==='printer-error'?2:1);i++){const jobId=randomUUID();jobs.push(jobId);assert.equal((await call('submit',sender,{jobId,label})).status,200);}
     const configPath=join(directory,'connection.json');
     await writeFile(configPath,JSON.stringify({schemaVersion:1,apiUrl:api,stationId:station.id,ownerToken:station.ownerToken,expiresAt:station.expiresAt}),{mode:0o600});
     dropAck=scenario==='lost-ack';
-    const result=await promisify(execFile)('python',['checks/upharm-receiver.py',configPath,scenario]);process.stdout.write(result.stdout);
+    const result=await promisify(execFile)('python',['checks/upharm-receiver.py',configPath,scenario,profile]);process.stdout.write(result.stdout);
     assert.equal((await call('status',sender,{jobId:jobs[0]},true)).body.status,['crash','printer-error'].includes(scenario)?'failed':'spooled');
     if(jobs.length===2)assert.equal((await call('status',sender,{jobId:jobs[1]},true)).body.status,'spooled');
     assert.equal((await call('jobs',owner,{},true)).body.jobs.length,0);
-    assert.equal((await call('connection',sender,{},true)).body.receiver.app,'upharm-daily');
+    assert.equal((await call('connection',sender,{},true)).body.receiver.app,profile==='standalone'?'pc-print-agent':'upharm-daily');
     assert.equal((await call('connection',sender,{},true)).body.receiver.online,true);
     clock+=61000;assert.equal((await call('connection',sender,{},true)).body.receiver.online,false);clock=Date.now();
     await call('close',owner);

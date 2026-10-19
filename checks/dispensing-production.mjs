@@ -21,7 +21,7 @@ for(const page of [desktop,mobile]) {
   });
 }
 try {
-  const response=await desktop.goto(base+'/?test',{waitUntil:'networkidle'});assert.equal(response.status(),200);
+  const response=await desktop.goto(base+'/?test&view=mobile',{waitUntil:'networkidle'});assert.equal(response.status(),200);
   await desktop.locator('#dispense-tab').click();await desktop.locator('#printer-settings').click();
   await desktop.locator('#station-name').fill('기능 검증용 PC');
   const createResponse=desktop.waitForResponse(response=>response.url().endsWith('/api/print-relay')&&response.request().postDataJSON()?.action==='create');

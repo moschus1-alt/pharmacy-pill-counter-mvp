@@ -76,7 +76,7 @@ const pc=await browser.newContext({viewport:{width:1280,height:900}}),phone=awai
 const desktop=await pc.newPage(),mobile=await phone.newPage(),errors=[];
 for(const page of [desktop,mobile]){page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());await page.addInitScript(()=>{window.printCalls=0;window.print=()=>{window.printCalls++;};});}
 try {
-  await desktop.goto(base+'/?test');await desktop.locator('#dispense-tab').click();
+  await desktop.goto(base+'/?test&view=mobile');await desktop.locator('#dispense-tab').click();
   assert.equal(await desktop.locator('#label-size').inputValue(),'dk22210');
   assert.equal(await desktop.locator('#label-width').inputValue(),'29');assert(await desktop.locator('#label-width').isDisabled());
   await desktop.locator('#label-height').fill('90.5');
@@ -123,7 +123,14 @@ try {
   await mobile.locator('#confirm').click();await mobile.waitForFunction(()=>document.getElementById('dispense-count').value==='8');
   assert(await mobile.locator('#label-send').isDisabled());await mobile.locator('#label-reviewed').check();
   assert(await mobile.locator('#label-send').isEnabled());
-  await mobile.locator('#label-height').fill('12');await mobile.locator('#label-reviewed').check();assert(await mobile.locator('#label-send').isDisabled());
+  await mobile.locator('#label-height').fill('12');await mobile.locator('#label-reviewed').check();assert(await mobile.locator('#label-send').isEnabled());
+  assert.match(await mobile.locator('#label-fit-info').innerText(),/축소/);
+  const fit=await mobile.locator('#label-preview .label-paper').evaluate(paper=>{
+    const box=paper.getBoundingClientRect(),content=paper.querySelector('.label-content').getBoundingClientRect();
+    return {scale:Number(paper.dataset.scale),inside:content.bottom<=box.bottom+1&&content.right<=box.right+1,text:paper.textContent};
+  });
+  assert(fit.scale>0&&fit.scale<1);assert(fit.inside);assert.match(fit.text,/8개/);assert.match(fit.text,/LOT001/);assert.match(fit.text,/2029-12-31/);
+  await mobile.screenshot({path:results+'/small-label-fit.png',fullPage:true});
   await mobile.locator('#label-height').fill('90.5');await mobile.locator('#label-reviewed').check();assert(await mobile.locator('#label-send').isEnabled());
   await mobile.locator('#label-send').click();await mobile.waitForFunction(()=>document.getElementById('label-send').textContent==='PC로 전송했어요');
   await desktop.waitForFunction(()=>document.querySelectorAll('.received-job').length===1,{},{timeout:15000});

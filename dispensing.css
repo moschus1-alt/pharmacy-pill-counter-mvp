@@ -24,3 +24,25 @@
 .printer-setup-guide{padding:14px;background:#edf5ef;border-radius:12px;font-size:13px;line-height:1.65}.printer-setup-guide ol{padding-left:20px;margin:10px 0}.printer-setup-guide li+li{margin-top:7px}.local-print-options{margin-top:14px;font-size:12px}.local-print-options summary{cursor:pointer;color:var(--muted);padding:8px 0}.local-print-options .helper{margin-top:8px}
 
 .label-brother{padding:3mm 1.5mm}.label-narrow{gap:.7mm}.label-narrow .label-heading{flex-wrap:wrap;gap:1mm}.label-narrow .label-details,.label-narrow .label-strength{font-size:7pt}.label-narrow .label-product{font-size:9pt}
+
+/* PC landing page: keep counting controls out of view regardless of window size. */
+html[data-device-view=pc] main{max-width:1100px}
+html[data-device-view=pc] main>:not(#pc-panel){display:none!important}
+html[data-device-view=pc] .header{max-width:1100px}
+.pc-home-heading{padding:36px 4px 28px}.pc-home-heading h1{font-size:32px;letter-spacing:-1px;margin:6px 0 12px}.pc-home-heading>p:last-child{font-size:15px;line-height:1.7;color:var(--muted)}
+.pc-home-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}.pc-home-card{padding:28px;background:#fff;border:1px solid var(--line);border-radius:22px}.pc-home-card h2{font-size:22px;margin:14px 0 10px;letter-spacing:-.5px}.pc-home-tag{display:inline-block;border-radius:30px;padding:5px 10px;background:#e2eee6;color:var(--green);font-size:12px;font-weight:700}.pc-home-tag-muted{background:#edf0ed;color:var(--muted)}
+.pc-home-steps{padding-left:22px;margin:24px 0;line-height:1.8;font-size:15px}.pc-home-steps li+li{margin-top:14px}.pc-home-note{font-size:12px;color:var(--muted);line-height:1.7;margin:20px 0 0;padding-top:16px;border-top:1px solid var(--line)}
+#pc-web-status .pc-connection-banner{position:static;margin:20px 0;padding:12px;box-shadow:none}#pc-web-status .pc-banner-copy strong{font-size:16px}#pc-web-controls label{display:block;margin:14px 0 8px;font-size:13px;font-weight:650}#pc-web-controls>input{width:100%}#pc-web-controls>button{margin-top:12px}#pc-web-controls #station-qr{max-width:270px}
+.pc-home-advanced{margin-top:20px;font-size:13px}.pc-home-advanced summary{cursor:pointer;color:var(--green);padding:8px 0}#pc-web-options>*{margin-top:12px}#pc-web-jobs{margin-top:22px}.pc-home-footer{margin:24px 4px;font-size:12px;line-height:1.7;color:var(--muted)}.pc-home-footer a{color:var(--green);white-space:nowrap}
+@media(max-width:760px){.pc-home-grid{grid-template-columns:1fr}.pc-home-heading{padding-top:24px}.pc-home-heading h1{font-size:27px}.pc-home-card{padding:22px}}
+@media print{#pc-panel{display:none!important}}
+
+.compact-help{font-size:12px;color:var(--muted);margin:12px 0}.compact-help summary{cursor:pointer;line-height:1.6}.compact-help .helper{margin-top:8px}.connection-current{display:grid;gap:8px;padding:16px;background:#edf5ef;border-radius:14px;margin:8px 0 16px}.connection-current>span{font-size:12px;color:var(--muted)}.connection-current>strong{font-size:20px}.connection-current>p{font-size:13px;color:var(--green)}#mobile-link-fields{margin:16px 0}#mobile-link-fields>label{display:block;margin-bottom:8px;font-size:13px}#desktop-connection-tools>summary{cursor:pointer;margin:16px 0;font-size:13px}#desktop-connection-tools>label{display:block;margin:12px 0 8px}
+html[data-input-device=mobile] #desktop-connection-tools{display:none}
+html[data-device-view=pc] #mobile-connection-help,html[data-device-view=pc] #mobile-connection-current,html[data-device-view=pc] #mobile-link-fields,html[data-device-view=pc] #pc-disconnect{display:none!important}
+
+#pc-auto-form{margin-top:20px}#pc-auto-form label{display:block;font-size:13px;font-weight:650;margin-bottom:8px}#pc-auto-form input{width:100%}#pc-auto-form button{margin-top:12px}.pc-auto-status{margin:18px 0;padding:12px 14px;background:#fff8e9;color:#704c10;border-radius:12px;font-size:14px;font-weight:650}.pc-auto-status[data-state=ready]{background:#e6f4ed;color:#145e49}.pc-auto-status[data-state=error]{background:#fff1ea;color:#8d3c20}#pc-auto-pairing>strong{display:block;font-size:18px}#pc-auto-qr{max-width:270px;margin:18px auto}#pc-auto-qr svg{display:block;width:100%;height:auto}
+
+.label-paper{overflow:hidden}.label-content{display:flex;flex-direction:column;gap:inherit;flex-shrink:0;transform-origin:top left;min-width:0}.label-fit-info{font-size:12px;color:var(--muted);text-align:center;margin:8px 0}
+
+.label-content .label-barcode svg{width:100%}.pc-home-card input{box-sizing:border-box;width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:inherit;background:#f8faf8;color:var(--ink)}

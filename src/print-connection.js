@@ -1,3 +1,4 @@
+import {zipStore} from './zip-store.js';
 import {createLabel,printLabel} from './label-view.js';
 import {localDate,labelSizeText} from './dispensing-data.js';
 
@@ -16,7 +17,7 @@ export async function relayRequest(action,session={},data={},get=false) {
 }
 
 export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>({size:'60x40'})}) {
-  let sender=readSession(senderKey),station=readSession(stationKey),pollTimer=null,polling=false,activeJob=null,jobs=[],pairURL='',disposed=false,connectionTimer=null,stationIssue=false,refreshing=false;
+  let sender=readSession(senderKey),station=readSession(stationKey),pollTimer=null,polling=false,activeJob=null,jobs=[],pairURL='',disposed=false,connectionTimer=null,stationIssue=false,refreshing=false,changingConnection=false;
   const connectionMessage=text=>$('printer-connection-message').textContent=text;
   function sync() {
     if(sender?.expiresAt<=Date.now()){sender=null;saveSession(senderKey,null);}
@@ -24,10 +25,11 @@ export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>
     const receiver=(sender||station)?.receiver;
     const receiverOnline=!!receiver?.online&&Date.now()-receiver.updatedAt<60000;
     const autoReady=receiverOnline&&receiver.state==='ready';
-    const receiverTitle=autoReady?'유팜데일리 자동 출력 연결됨':receiverOnline&&receiver.state==='error'?'유팜데일리 프린터 확인 필요':'유팜데일리 자동 출력 연결 끊김';
+    const receiverName=receiver?.app==='pc-print-agent'?'PC':'유팜데일리';
+    const receiverTitle=autoReady?`${receiverName} 자동 출력 연결됨`:receiverOnline&&receiver.state==='error'?`${receiverName} 프린터 확인 필요`:`${receiverName} 자동 출력 연결 끊김`;
     const state=receiver?(autoReady?'connected':'warning'):sender?'connected':station?(stationIssue?'warning':'receiving'):'disconnected';
     const title=receiver?receiverTitle:sender?'PC 연결됨':station?(stationIssue?'PC 수신 연결 확인 필요':'이 PC에서 라벨 받는 중'):'PC 연결 안 됨';
-    const detail=receiver?`${(sender||station).name} · ${receiver.printerName} · ${autoReady?'휴대폰에서 전송하면 자동 출력해요.':'유팜데일리의 라벨 수신 상태를 확인해 주세요.'}`:sender?`${sender.name} · PC의 출력 대기 화면을 열어 두세요.`:station?`${station.name} · ${stationIssue?'인터넷 연결을 확인해 주세요.':'휴대폰을 연결하려면 QR을 보여 주세요.'}`:'라벨을 받을 PC를 연결해 주세요.';
+    const detail=receiver?`${(sender||station).name} · ${receiver.printerName} · ${autoReady?'휴대폰에서 전송하면 자동 출력해요.':`${receiverName} 출력 연결 프로그램을 확인해 주세요.`}`:sender?`${sender.name} · PC의 출력 대기 화면을 열어 두세요.`:station?`${station.name} · ${stationIssue?'인터넷 연결을 확인해 주세요.':'휴대폰을 연결하려면 QR을 보여 주세요.'}`:'라벨을 받을 PC를 연결해 주세요.';
     $('pc-connection-banner').dataset.state=state;
     $('pc-banner-title').textContent=title;$('pc-banner-detail').textContent=detail;
     $('pc-banner-action').textContent=sender?'연결 관리 ›':station?'연결 QR ›':'연결하기 ›';
@@ -37,8 +39,17 @@ export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>
     $('pc-connection-status').textContent=sender?(receiver?receiverTitle:`${sender.name} 연결됨`):'출력 PC를 연결해 주세요';
     $('pc-connection-dot').classList.toggle('connected',!!sender&&(!receiver||autoReady));
     $('pc-disconnect').hidden=!sender;
+    $('mobile-connection-help').hidden=!!sender;
+    $('mobile-connection-current').hidden=!sender;
+    $('mobile-link-fields').hidden=!!sender&&!changingConnection;
+    $('pc-change').hidden=changingConnection;
+    $('mobile-pc-name').textContent=sender?.name||'';
+    $('mobile-pc-state').textContent=receiver?receiverTitle:sender?'연결됨':'';
+    $('printer-settings').textContent=document.documentElement.dataset.deviceView==='pc'?'프린터 설정':sender?'연결 관리':'PC 연결';
+    document.querySelector('.connection-summary').hidden=!!sender;
+    document.querySelector('.local-print-options').hidden=!!sender&&document.documentElement.dataset.inputDevice==='mobile';
     $('pc-station-panel').hidden=!station;
-    $('station-create').textContent=station?'연결 QR 다시 보기':'이 PC에서 라벨 받기';
+    $('station-create').textContent=station?'연결 QR 다시 보기':document.documentElement.dataset.deviceView==='pc'?'프로그램 없이 수동 인쇄 연결':'이 PC에서 라벨 받기';
     onChange?.();
   }
   async function pair(value) {
@@ -47,7 +58,7 @@ export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>
     if(url.origin!==location.origin||!match)throw Error('이 앱의 PC 연결 링크를 입력해 주세요.');
     const candidate={id:match[1],token:match[2]};
     const result=await relayRequest('pair',candidate);
-    sender={...candidate,...result};saveSession(senderKey,sender);sync();connectionMessage(`${sender.name}에 연결했어요.`);
+    changingConnection=false;sender={...candidate,...result};saveSession(senderKey,sender);sync();connectionMessage(`${sender.name}에 연결했어요.`);
     onOpenDispensing();return sender;
   }
   function showPairing() {
@@ -66,7 +77,7 @@ export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>
       const title=document.createElement('strong');title.textContent=job.label.name;
       const detail=document.createElement('p');detail.className='helper';detail.textContent=`${job.label.count}개 · ${job.label.copies}장 · ${new Date(job.createdAt).toLocaleTimeString('ko-KR')}`;
       if(station?.receiver||job.status==='processing'){
-        const status=document.createElement('p');status.className='helper';status.textContent=job.status==='processing'?'유팜데일리가 처리 중이에요. 오래 멈춰 있다면 실제 출력물을 확인해 주세요.':'유팜데일리의 자동 출력을 기다리고 있어요.';
+        const status=document.createElement('p');status.className='helper';status.textContent=job.status==='processing'?'프린터로 전달 중이에요. 오래 멈춰 있다면 실제 출력물을 확인해 주세요.':'자동 출력을 기다리고 있어요.';
         card.append(title,detail,status);$('station-jobs').append(card);continue;
       }
       const row=document.createElement('div');row.className='save-row';
@@ -110,6 +121,28 @@ export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>
     }catch(error){if(session===(sender||station)){if(session.receiver)session.receiver.online=false;if(error.status===410||error.status===403){if(session===sender){sender=null;saveSession(senderKey,null);}else{station=null;saveSession(stationKey,null);}}sync();}}
     finally{refreshing=false;}
   }
+  document.addEventListener('pc-agent-download',async()=>{
+    const button=$('pc-agent-download'),message=$('pc-agent-message');
+    button.disabled=true;message.textContent='출력 연결 파일을 준비하고 있어요…';
+    try {
+      if(station?.expiresAt<=Date.now())station=null;
+      if(!station){station=await relayRequest('create',{}, {name:$('station-name').value||'라벨 출력 PC'});saveSession(stationKey,station);stationIssue=false;sync();void poll();}
+      showPairing();
+      const files=['Start.cmd','Start.ps1','Print-Label.ps1','Barcode.ps1','receiver.py','README.txt','JsBarcode-LICENSE.txt'];
+      const entries=await Promise.all(files.map(async name=>{
+        const response=await fetch('/integrations/pc-printer/'+name,{cache:'no-store'});
+        if(!response.ok)throw Error('출력 프로그램을 받지 못했어요. 다시 눌러 주세요.');
+        return [name,new Uint8Array(await response.arrayBuffer())];
+      }));
+      const response=await fetch('/integrations/upharm-daily/pill_counter_relay.py',{cache:'no-store'});
+      if(!response.ok)throw Error('출력 프로그램을 받지 못했어요. 다시 눌러 주세요.');
+      entries.push(['pill_counter_relay.py',new Uint8Array(await response.arrayBuffer())]);
+      entries.push(['connection.json',JSON.stringify({schemaVersion:1,apiUrl:new URL('/api/print-relay',location.origin).href,stationId:station.id,ownerToken:station.ownerToken,expiresAt:station.expiresAt},null,2)]);
+      const url=URL.createObjectURL(zipStore(entries)),link=document.createElement('a');link.href=url;link.download='pill-counter-auto-print.zip';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+      message.textContent='압축을 풀고 Start.cmd를 실행하세요. 프린터 선택 후 휴대폰으로 아래 QR을 읽으면 돼요.';
+    }catch(error){message.textContent=error.message;}
+    finally{button.disabled=false;}
+  });
   $('upharm-config-download').onclick=()=>{
     if(!station)return;
     const config={schemaVersion:1,apiUrl:new URL('/api/print-relay',location.origin).href,stationId:station.id,ownerToken:station.ownerToken,expiresAt:station.expiresAt,printerHint:'Brother QL-550',paper:getPaperSettings()};
@@ -132,7 +165,8 @@ export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>
     try{await pair($('pc-link-input').value.trim());$('pc-link-input').value='';}catch(error){connectionMessage(error.message);}
     finally{$('pc-link-apply').disabled=false;}
   };
-  $('pc-disconnect').onclick=()=>{sender=null;saveSession(senderKey,null);sync();connectionMessage('휴대폰 연결을 해제했어요.');};
+  $('pc-change').onclick=()=>{changingConnection=true;sync();$('pc-link-input').focus();};
+  $('pc-disconnect').onclick=()=>{changingConnection=false;sender=null;saveSession(senderKey,null);sync();connectionMessage('휴대폰 연결을 해제했어요.');};
   $('station-create').onclick=async()=>{
     if(station){showPairing();return;}
     $('station-create').disabled=true;connectionMessage('PC 연결을 준비하고 있어요…');
@@ -174,12 +208,16 @@ export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){void refreshConnection();if(station){clearTimeout(pollTimer);void poll();}}});
   queueMicrotask(()=>{
     sync();clearInterval(connectionTimer);connectionTimer=setInterval(()=>void refreshConnection(),15000);void refreshConnection();if(station){onOpenDispensing();void poll();}
+    consumePairLink();
+  });
+  function consumePairLink() {
     const hash=new URLSearchParams(location.hash.slice(1));
     if(hash.has('pc')) {
       const link=location.href;history.replaceState(history.state,'',location.pathname+location.search);
       onOpenDispensing();void pair(link).catch(error=>{connectionMessage(error.message);$('printer-dialog').showModal();});
     }
-  });
+  }
+  window.addEventListener('hashchange',consumePairLink);
   async function senderRequest(action,data,get=false) {
     if(!sender)throw Error('출력 PC를 먼저 연결해 주세요.');
     const current=sender;

@@ -72,16 +72,16 @@ export function createRelay(store=storage,now=()=>Date.now()) {
       if(!owner&&!sender)fail(403,'PC 연결을 다시 확인해 주세요.');
       async function connectionState() {
         const saved=await store.read(prefix+'receiver.json');
-        const receiver=saved?{app:'upharm-daily',printerName:saved.printerName,state:saved.state,updatedAt:saved.updatedAt,online:now()-saved.updatedAt<RECEIVER_ONLINE_MS}:null;
+        const receiver=saved?{app:saved.app||'upharm-daily',printerName:saved.printerName,state:saved.state,updatedAt:saved.updatedAt,online:now()-saved.updatedAt<RECEIVER_ONLINE_MS}:null;
         return {name:station.name,expiresAt:station.expiresAt,receiver};
       }
       if((req.method==='POST'&&action==='pair')||(req.method==='GET'&&action==='connection'))return send(await connectionState());
       if(req.method==='POST'&&action==='receiver-heartbeat') {
-        if(!owner)fail(403,'유팜데일리의 PC 연결 정보가 필요해요.');
+        if(!owner)fail(403,'출력 PC의 연결 정보가 필요해요.');
         if(!receiverPattern.test(body.receiverId||'')||!['ready','error','stopped'].includes(body.state))fail(400,'수신 프로그램 상태를 확인해 주세요.');
         const printerName=String(body.printerName||'').trim().slice(0,120);
-        if(!printerName)fail(400,'유팜데일리에서 출력 프린터를 선택해 주세요.');
-        await store.write(prefix+'receiver.json',{receiverId:body.receiverId,printerName,state:body.state,updatedAt:now()},true);
+        if(!printerName)fail(400,'출력 연결 프로그램에서 프린터를 선택해 주세요.');
+        await store.write(prefix+'receiver.json',{receiverId:body.receiverId,printerName,state:body.state,app:body.app==='pc-print-agent'?'pc-print-agent':'upharm-daily',updatedAt:now()},true);
         return send(await connectionState());
       }
       if(req.method==='GET'&&action==='jobs') {

@@ -27,15 +27,40 @@ export function createLabel(data,{test=false}={}) {
     try {
       if(!window.JsBarcode)throw Error('Barcode renderer unavailable');
       window.JsBarcode(svg,data.code,{format:'CODE128',height:22,width:1.3,margin:0,displayValue:false});
-      svg.setAttribute('role','img');svg.setAttribute('aria-label',`제품 바코드 ${data.code}`);wrap.append(svg);
+      svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('role','img');svg.setAttribute('aria-label',`제품 바코드 ${data.code}`);wrap.append(svg);
     }catch{ /* The human-readable product code remains available. */ }
     wrap.append(element('span',data.code));paper.append(wrap);
   }
+  const content=element('div','','label-content');
+  content.append(...paper.childNodes);paper.append(content);
+  queueMicrotask(()=>fitLabel(paper));
   return paper;
 }
 
+export function fitLabel(node) {
+  const content=node.querySelector('.label-content');
+  if(!content||!node.clientHeight)return 1;
+  const style=getComputedStyle(node),width=node.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),height=node.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom);
+  content.style.transform='none';content.style.minHeight='0';content.style.marginLeft='0';
+  function fits(scale){
+    content.style.width=`${width/scale}px`;
+    return Math.max(content.scrollHeight,content.getBoundingClientRect().height)*scale<=height+.01;
+  }
+  let scale=1;
+  if(!fits(1)){
+    let low=.001,high=1;
+    for(let i=0;i<14;i++){const middle=(low+high)/2;if(fits(middle))low=middle;else high=middle;}
+    scale=low;
+  }
+  content.style.width=`${width/scale}px`;
+  content.style.minHeight=`${height/scale}px`;
+  content.style.transform=`scale(${scale})`;
+  node.dataset.scale=String(scale);
+  return scale;
+}
 export function labelFits(node) {
-  return node.scrollHeight<=node.clientHeight+1&&node.scrollWidth<=node.clientWidth+1;
+  fitLabel(node);
+  return !node.clientHeight||Number(node.dataset.scale)>0;
 }
 
 export function printLabel(data,{test=false}={}) {
@@ -45,10 +70,10 @@ export function printLabel(data,{test=false}={}) {
   if(!size)throw Error('용지 폭·길이를 확인해 주세요.');
   const [width,height]=size;
   document.getElementById('label-page-style').textContent=`@page { size: ${width}mm ${height}mm; margin: 0; }`;
-  // Lay out a real-size label before printing so long fields cannot silently clip.
+  // Use the same fit-to-paper layout in the preview and browser print output.
   region.classList.add('print-measuring');
   const fits=[...region.children].every(labelFits);
   region.classList.remove('print-measuring');
-  if(!fits)throw Error('내용이 라벨 크기를 넘어가요. 연속 용지의 길이를 늘리거나 더 큰 라벨을 선택해 주세요.');
+  if(!fits)throw Error('용지 크기를 확인해 주세요.');
   window.print();
 }

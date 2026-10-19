@@ -8,7 +8,7 @@ const context=await browser.newContext({viewport:{width:390,height:844},isMobile
 const page=await context.newPage(),errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 try{
- const response=await page.goto(base+'/?test',{waitUntil:'networkidle'});assert.equal(response.status(),200);
+ const response=await page.goto(base+'/?test&view=mobile',{waitUntil:'networkidle'});assert.equal(response.status(),200);
  assert(await page.locator('#camera-open').isVisible());assert(await page.locator('#upload').isVisible());
  const module=await context.request.get(base+'/src/camera-frame.js');assert.equal(module.status(),200);assert((await module.text()).includes('captureCameraFrame'));
  const health=await context.request.get(base+'/api/analyze');assert.equal(health.status(),200);

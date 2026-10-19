@@ -1,13 +1,13 @@
 import {dispensingView,dispensingDialogs} from './dispensing-view.js';
 import {parseProductBarcode,barcodePayload,labelProductName,labelDimensions,labelSizeText,localDate,labelIssues,validCount} from './dispensing-data.js';
-import {createLabel,labelFits,printLabel} from './label-view.js';
+import {createLabel,fitLabel,printLabel} from './label-view.js';
 import {barcodeScanner} from './barcode-scanner.js';
 import {printConnection} from './print-connection.js';
 import {normalizeProductCode} from './product-code.js';
 
 export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
   const $=id=>document.getElementById(id),catalogKey='pill-products-v1';
-  document.querySelector('.tabs').insertAdjacentHTML('beforeend','<button id="dispense-tab" aria-pressed="false">의약품예제소분</button>');
+  document.querySelector('.tabs').insertAdjacentHTML('beforeend','<button id="dispense-tab" aria-pressed="false">의약품 소분</button>');
   document.querySelector('footer').insertAdjacentHTML('beforebegin',dispensingView);
   document.body.insertAdjacentHTML('beforeend',dispensingDialogs);
   document.querySelector('.counter').before($('dispense-count-banner'));
@@ -103,8 +103,8 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     const selected=paperSettings();
     $('label-width').disabled=sending||selected.size!=='custom';$('label-height').disabled=sending||!['custom','dk22210'].includes(selected.size);
     const description=labelSizeText(selected);
-    $('label-paper-summary').textContent=`선택한 용지: ${description}${labelDimensions(selected)?' · 이 기기에 저장돼요.':''}`;
-    $('printer-test-paper').textContent=`테스트 인쇄 용지: ${description}. 크기는 소분 화면의 ‘라벨 크기’에서 변경해 주세요.`;
+    $('label-paper-summary').textContent=description;
+    $('printer-test-paper').textContent=`테스트 인쇄 용지: ${description}. ${document.documentElement.dataset.deviceView==='pc'?'휴대폰에서 받은 라벨은 휴대폰에서 선택한 크기로 인쇄해요.':'크기는 소분 화면의 ‘라벨 크기’에서 변경해 주세요.'}`;
     const data=labelData(),paper=createLabel(data);
     $('label-preview').replaceChildren(paper);
     const issues=labelIssues(data);
@@ -112,7 +112,8 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     $('dispense-start-count').disabled=sending||lookupPending;
     if(product?.raw!==barcodePayload($('product-barcode').value))issues.unshift('입력한 바코드를 적용해 주세요.');
     // Hidden tabs have no layout; check again when the tab becomes visible.
-    if(!$('dispense-panel').hidden&&!labelFits(paper))issues.push('내용이 라벨 크기를 넘어가요. 연속 용지의 길이를 늘리거나 더 큰 라벨을 선택해 주세요.');
+    const scale=fitLabel(paper);
+    $('label-fit-info').textContent=scale<.995?`용지에 맞춰 ${Math.round(scale*100)}%로 축소했어요. 미리보기에서 글자를 확인해 주세요.`:'용지에 맞춰 자동으로 크기를 조절해요.';
     $('dispense-count').value=count===null?'—':String(count);
     $('dispense-count-state').textContent=count===null?'카운팅 전':'수량 확인 완료';
     $('dispense-count-state').classList.toggle('active',count!==null);
@@ -157,7 +158,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     try {
       const status=await connection.status(job.id);
       if(sendJob!==job)return;
-      $('label-send-status').textContent=({waiting:connection.automatic()?'유팜데일리의 자동 출력을 기다리고 있어요.':'PC로 전송했어요. PC 출력 대기 화면에서 라벨을 확인해 주세요.',processing:'유팜데일리가 라벨을 처리 중이에요. 오래 멈춰 있다면 실제 출력물을 먼저 확인해 주세요.',spooled:'유팜데일리에서 프린터로 보냈어요. 실제 출력물을 확인해 주세요.',failed:'유팜데일리 자동 출력 중 오류가 발생했어요. 중복 출력하지 않도록 멈췄어요. PC와 실제 출력물을 확인해 주세요.',printed:'PC에서 실제 출력 완료를 확인했어요.',dismissed:'PC에서 이 라벨 요청을 취소했어요.'})[status.status]||'PC의 확인을 기다리고 있어요.';
+      $('label-send-status').textContent=({waiting:connection.automatic()?'자동 출력을 기다리고 있어요.':'PC로 전송했어요. PC 출력 대기 화면에서 라벨을 확인해 주세요.',processing:'PC가 라벨을 처리 중이에요. 오래 멈춰 있다면 실제 출력물을 먼저 확인해 주세요.',spooled:'PC에서 프린터로 보냈어요. 실제 출력물을 확인해 주세요.',failed:'PC 자동 출력 중 오류가 발생했어요. 중복 출력하지 않도록 멈췄어요. PC와 실제 출력물을 확인해 주세요.',printed:'PC에서 실제 출력 완료를 확인했어요.',dismissed:'PC에서 이 라벨 요청을 취소했어요.'})[status.status]||'PC의 확인을 기다리고 있어요.';
       if(['printed','dismissed','spooled','failed'].includes(status.status))return;
     }catch(error){if(sendJob===job)$('label-send-status').textContent=`전송한 요청의 상태를 확인하지 못했어요. ${error.message}`;if(error.status===410)return;}
     if(sendJob===job)statusTimer=setTimeout(()=>void trackJob(job),8000);

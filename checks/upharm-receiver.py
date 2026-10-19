@@ -4,6 +4,9 @@ import sys
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'integrations' / 'upharm-daily'))
 from pill_counter_relay import PillCounterReceiver, PrintRejected, SPOOLED
+if len(sys.argv) > 3 and sys.argv[3] == 'standalone':
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'integrations' / 'pc-printer'))
+    from receiver import DesktopReceiver as PillCounterReceiver
 config = json.loads(Path(sys.argv[1]).read_text())
 scenario = sys.argv[2]
 calls = []
@@ -58,4 +61,4 @@ with tempfile.TemporaryDirectory() as directory:
         client.poll_once()
         assert len(calls) == 1
     client.stop()
-print('PASS Python receiver: ' + scenario)
+print('PASS Python receiver: ' + sys.argv[3] + ' / ' + scenario)

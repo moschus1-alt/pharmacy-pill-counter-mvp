@@ -3,6 +3,10 @@ import {CAMERA_ASPECT_RATIO,cameraConstraints,captureCameraFrame as captureToFra
 import {photoGestures} from './photo-gestures.js';
 import {appNavigation} from './app-navigation.js';
 import {setupDispensing} from './dispensing.js';
+import {detectPcView,detectPcDevice,mountPcView} from './pc-view.js';
+const pcView=detectPcView();
+document.documentElement.dataset.deviceView=pcView?'pc':'mobile';
+document.documentElement.dataset.inputDevice=detectPcDevice()?'pc':'mobile';
 document.documentElement.style.setProperty('--camera-aspect',String(CAMERA_ASPECT_RATIO));
 const $=id=>document.getElementById(id);
 const detector=new PillDetector();
@@ -22,6 +26,7 @@ const dispensing=setupDispensing({
  cancelCounting(){dispensingCount=false;},
  openDispensing(){switchTab('dispense');}
 });
+if(pcView)mountPcView();
 const clone=()=>structuredClone(objects);
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
 function setStatus(text,kind=''){$('status').textContent=text;$('status').className=`status ${kind}`;}
@@ -216,7 +221,7 @@ function backWithinApp(){
  if(loaded){$('leave-dialog').showModal();return;}
  $('exit-dialog').showModal();
 }
-const navigation=appNavigation(backWithinApp);
+const navigation=pcView?{exit(){location.assign('exit.html');}}:appNavigation(backWithinApp);
 async function startLive(){
  if(starting||stream)return;
  if(!navigator.mediaDevices?.getUserMedia){message('이 브라우저에서 카메라를 열 수 없어요. Safari나 Chrome에서 열거나 사진 촬영을 이용해 주세요.',true);return;}
