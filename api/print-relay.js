@@ -7,6 +7,8 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const same=(token,expected)=>typeof token==='string'&&/^[a-f0-9]{64}$/.test(token)&&typeof expected==='string'&&timingSafeEqual(Buffer.from(hash(token),'hex'),Buffer.from(expected,'hex'));
 const stationPattern=/^\d{13}-[a-f0-9]{32}$/;
 const jobPattern=/^[a-f0-9-]{36}$/;
+const receiverPattern=/^[a-f0-9-]{36}$/;
+const RECEIVER_ONLINE_MS=60000;
 function fail(status,message){throw Object.assign(new Error(message),{status});}
 
 export function normalizeLabel(input) {
@@ -68,12 +70,31 @@ export function createRelay(store=storage,now=()=>Date.now()) {
       const token=String(req.headers.authorization||'').replace(/^Bearer /,'');
       const owner=same(token,station.ownerHash),sender=same(token,station.pairHash);
       if(!owner&&!sender)fail(403,'PC 연결을 다시 확인해 주세요.');
-      if(req.method==='POST'&&action==='pair')return send({name:station.name,expiresAt:station.expiresAt});
+      async function connectionState() {
+        const saved=await store.read(prefix+'receiver.json');
+        const receiver=saved?{app:'upharm-daily',printerName:saved.printerName,state:saved.state,updatedAt:saved.updatedAt,online:now()-saved.updatedAt<RECEIVER_ONLINE_MS}:null;
+        return {name:station.name,expiresAt:station.expiresAt,receiver};
+      }
+      if((req.method==='POST'&&action==='pair')||(req.method==='GET'&&action==='connection'))return send(await connectionState());
+      if(req.method==='POST'&&action==='receiver-heartbeat') {
+        if(!owner)fail(403,'유팜데일리의 PC 연결 정보가 필요해요.');
+        if(!receiverPattern.test(body.receiverId||'')||!['ready','error','stopped'].includes(body.state))fail(400,'수신 프로그램 상태를 확인해 주세요.');
+        const printerName=String(body.printerName||'').trim().slice(0,120);
+        if(!printerName)fail(400,'유팜데일리에서 출력 프린터를 선택해 주세요.');
+        await store.write(prefix+'receiver.json',{receiverId:body.receiverId,printerName,state:body.state,updatedAt:now()},true);
+        return send(await connectionState());
+      }
       if(req.method==='GET'&&action==='jobs') {
         if(!owner)fail(403,'출력 PC에서만 라벨을 받을 수 있어요.');
         const files=await store.paths(prefix+'jobs/',30);
         const jobs=(await Promise.all(files.map(x=>store.read(x.path)))).filter(Boolean).sort((a,b)=>a.createdAt-b.createdAt);
-        return send({jobs,expiresAt:station.expiresAt});
+        const pending=[];
+        for(const job of jobs) {
+          if(await store.read(prefix+`status/${job.id}.json`))continue;
+          const claim=await store.read(prefix+`claims/${job.id}.json`);
+          pending.push({...job,status:claim?'processing':'waiting',...(claim?{claimedAt:claim.at}:{})});
+        }
+        return send({jobs:pending,...await connectionState()});
       }
       if(req.method==='POST'&&action==='close') {
         if(!owner)fail(403,'출력 PC에서만 연결을 종료할 수 있어요.');
@@ -84,7 +105,7 @@ export function createRelay(store=storage,now=()=>Date.now()) {
       }
       const jobId=body.jobId||url.searchParams.get('jobId');
       if(!jobPattern.test(jobId||''))fail(400,'라벨 요청 번호가 올바르지 않아요.');
-      const jobPath=prefix+`jobs/${jobId}.json`,statusPath=prefix+`status/${jobId}.json`;
+      const jobPath=prefix+`jobs/${jobId}.json`,statusPath=prefix+`status/${jobId}.json`,claimPath=prefix+`claims/${jobId}.json`;
       if(req.method==='POST'&&action==='submit') {
         if(!sender)fail(403,'연결된 휴대폰에서 전송해 주세요.');
         const label=normalizeLabel(body.label);
@@ -100,13 +121,39 @@ export function createRelay(store=storage,now=()=>Date.now()) {
       if(req.method==='GET'&&action==='status') {
         const status=await store.read(statusPath);
         if(status)return send(status);
+        const claim=await store.read(claimPath);
+        if(claim)return send({status:'processing',at:claim.at});
         if(await store.read(jobPath))return send({status:'waiting'});
         fail(404,'라벨 요청을 찾지 못했어요.');
+      }
+      if(req.method==='POST'&&action==='claim') {
+        if(!owner)fail(403,'유팜데일리에서만 출력을 시작할 수 있어요.');
+        if(!receiverPattern.test(body.receiverId||'')||!receiverPattern.test(body.claimId||''))fail(400,'출력 처리 번호를 확인해 주세요.');
+        if(await store.read(statusPath)||await store.read(claimPath))return send({claimed:false});
+        if(!await store.read(jobPath))fail(404,'라벨 요청을 찾지 못했어요.');
+        // A durable, create-only claim is never automatically released. If the
+        // receiver crashes around spooling, another receiver must not reprint it.
+        try {await store.write(claimPath,{receiverId:body.receiverId,claimId:body.claimId,at:now()});}
+        catch(error){if(await store.read(claimPath))return send({claimed:false});throw error;}
+        return send({claimed:true});
+      }
+      if(req.method==='POST'&&['spooled','failed'].includes(action)) {
+        if(!owner)fail(403,'유팜데일리에서 출력 상태를 알려 주세요.');
+        const claim=await store.read(claimPath);
+        if(!claim||claim.receiverId!==body.receiverId||claim.claimId!==body.claimId)fail(409,'이 라벨의 출력 처리 권한이 없어요.');
+        const previous=await store.read(statusPath);
+        if(previous){if(previous.status!==action)fail(409,'이미 처리 결과가 기록됐어요.');return send(previous);}
+        const reason=action==='failed'&&['printer','layout','uncertain'].includes(body.reason)?body.reason:action==='failed'?'uncertain':undefined;
+        const status={status:action,at:now(),...(reason?{reason}:{})};
+        try{await store.write(statusPath,status);}catch(error){const saved=await store.read(statusPath);if(!saved)throw error;if(saved.status!==action)fail(409,'이미 처리 결과가 기록됐어요.');return send(saved);}
+        await store.remove([jobPath]);
+        return send(status);
       }
       if(req.method==='POST'&&['printed','dismissed'].includes(action)) {
         if(!owner)fail(403,'출력 PC에서 확인해 주세요.');
         const previous=await store.read(statusPath);
         if(previous)return send(previous);
+        if(await store.read(claimPath))fail(409,'유팜데일리에서 처리 중이에요. 프린터 출력물을 먼저 확인해 주세요.');
         if(!await store.read(jobPath))fail(404,'라벨 요청을 찾지 못했어요.');
         const status={status:action,at:now()};
         await store.write(statusPath,status);

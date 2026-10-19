@@ -156,8 +156,8 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     try {
       const status=await connection.status(job.id);
       if(sendJob!==job)return;
-      $('label-send-status').textContent=({waiting:'PC로 전송했어요. PC 출력 대기 화면에서 라벨을 확인해 주세요.',printed:'PC에서 실제 출력 완료를 확인했어요.',dismissed:'PC에서 이 라벨 요청을 취소했어요.'})[status.status]||'PC의 확인을 기다리고 있어요.';
-      if(status.status==='printed'||status.status==='dismissed')return;
+      $('label-send-status').textContent=({waiting:connection.automatic()?'유팜데일리의 자동 출력을 기다리고 있어요.':'PC로 전송했어요. PC 출력 대기 화면에서 라벨을 확인해 주세요.',processing:'유팜데일리가 라벨을 처리 중이에요. 오래 멈춰 있다면 실제 출력물을 먼저 확인해 주세요.',spooled:'유팜데일리에서 프린터로 보냈어요. 실제 출력물을 확인해 주세요.',failed:'유팜데일리 자동 출력 중 오류가 발생했어요. 중복 출력하지 않도록 멈췄어요. PC와 실제 출력물을 확인해 주세요.',printed:'PC에서 실제 출력 완료를 확인했어요.',dismissed:'PC에서 이 라벨 요청을 취소했어요.'})[status.status]||'PC의 확인을 기다리고 있어요.';
+      if(['printed','dismissed','spooled','failed'].includes(status.status))return;
     }catch(error){if(sendJob===job)$('label-send-status').textContent=`전송한 요청의 상태를 확인하지 못했어요. ${error.message}`;if(error.status===410)return;}
     if(sendJob===job)statusTimer=setTimeout(()=>void trackJob(job),8000);
   }

@@ -83,6 +83,14 @@ try {
   await desktop.waitForFunction(()=>!!sessionStorage.getItem('pill-label-station-v1'));
   const pairing=await desktop.evaluate(()=>{const station=JSON.parse(sessionStorage.getItem('pill-label-station-v1'));return `${location.origin}/?test#pc=${station.id}.${station.pairToken}`;});
   assert(await desktop.locator('#station-qr svg').isVisible());
+  const configDownload=desktop.waitForEvent('download');await desktop.locator('#upharm-config-download').click();
+  const downloaded=await configDownload;assert.equal(downloaded.suggestedFilename(),'upharm-daily-connection.json');
+  const upharmConfig=JSON.parse(await readFile(await downloaded.path(),'utf8'));
+  const browserStation=await desktop.evaluate(()=>JSON.parse(sessionStorage.getItem('pill-label-station-v1')));
+  assert.equal(upharmConfig.stationId,browserStation.id);assert.equal(upharmConfig.ownerToken,browserStation.ownerToken);
+  assert.equal(upharmConfig.apiUrl,base+'/api/print-relay');
+  const browserOwner={id:browserStation.id,token:browserStation.ownerToken};
+
   assert.equal(await desktop.locator('#pc-banner-title').innerText(),'이 PC에서 라벨 받는 중');
   await desktop.locator('#printer-dialog-close').click();
   await mobile.goto(pairing);await mobile.waitForFunction(()=>document.getElementById('pc-connection-status').textContent.includes('연결됨'));
@@ -131,6 +139,26 @@ try {
   assert.equal(decoded,'8801234567890');
   for(const width of [320,390,430,1280]){await mobile.setViewportSize({width,height:844});assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow at '+width);}
   await mobile.setViewportSize({width:390,height:844});await mobile.screenshot({path:results+'/dispensing-mobile.png',fullPage:true});await desktop.screenshot({path:results+'/dispensing-pc.png',fullPage:true});
+  // The UPharmDaily receiver advertises itself; a second label needs no PC click.
+  const receiverId=randomUUID(),claimId=randomUUID();
+  await call('receiver-heartbeat',browserOwner,{receiverId,state:'ready',printerName:'Brother QL-550'});
+  await mobile.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  await mobile.waitForFunction(()=>document.getElementById('pc-banner-title').textContent==='유팜데일리 자동 출력 연결됨');
+  assert.match(await mobile.locator('#pc-banner-detail').innerText(),/Brother QL-550/);
+  await mobile.locator('#product-name').fill('자동 출력 검증정');await mobile.locator('#dispense-start-count').click();
+  await mobile.locator('#file-input').setInputFiles(fileURLToPath(new URL('../examples/mediseg-8-pills.png',import.meta.url)));
+  await mobile.waitForFunction(()=>window.__pillCounterTest.state().analyzed&&!window.__pillCounterTest.state().busy);
+  await mobile.locator('#confirm').click();await mobile.locator('#label-reviewed').check();await mobile.locator('#label-send').click();
+  await mobile.waitForFunction(()=>document.getElementById('label-send').textContent==='PC로 전송했어요');
+  const automaticJob=(await call('jobs',browserOwner,{},'GET')).body.jobs[0];assert.equal(automaticJob.label.count,8);
+  assert.equal((await call('claim',browserOwner,{jobId:automaticJob.id,receiverId,claimId})).body.claimed,true);
+  assert.equal((await call('spooled',browserOwner,{jobId:automaticJob.id,receiverId,claimId})).status,200);
+  await mobile.waitForFunction(()=>document.getElementById('label-send-status').textContent.includes('프린터로 보냈어요'),{},{timeout:15000});
+  assert.equal(await desktop.evaluate(()=>window.printCalls),1,'automatic delivery must not invoke browser printing');
+  clock+=61000;
+  await mobile.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  await mobile.waitForFunction(()=>document.getElementById('pc-banner-title').textContent.includes('자동 출력 연결 끊김'));
+  assert.equal(await mobile.locator('#pc-connection-banner').getAttribute('data-state'),'warning');clock=Date.now();
   await mobile.locator('#pc-connection-banner').click();await mobile.locator('#pc-disconnect').click();await mobile.locator('#printer-dialog-close').click();
   assert.equal(await mobile.locator('#pc-banner-title').innerText(),'PC 연결 안 됨');
   assert.deepEqual(errors,[]);
