@@ -1,0 +1,28 @@
+{
+  "provider": "건강보험심사평가원",
+  "title": "약가마스터_의약품표준코드",
+  "sourceUrl": "https://www.data.go.kr/data/15067462/fileData.do",
+  "downloadUrl": "https://www.data.go.kr/cmm/cmm/fileDownload.do?atchFileId=FILE_000000007666876&fileDetailSn=1&insertDataPrcus=N",
+  "asOf": "2026-08-31",
+  "license": "공공누리 제1유형 (출처표시)",
+  "licenseUrl": "https://www.kogl.or.kr/info/license.do",
+  "scope": "심평원 공개 표준코드 목록의 정확한 코드만 조회. 전체 유통 의약품의 실시간 목록이나 현재 급여 여부를 보장하지 않음.",
+  "sourceSha256": "2d00689474851d81e6efb2ec4ccff9e271b46c5ba0d3640adfa797dff79368fa",
+  "sourceBytes": 55741167,
+  "sourceRows": 309889,
+  "codeCount": 309888,
+  "invalidCodeRows": 1,
+  "conflictingCodeCount": 0,
+  "columns": [
+    "한글상품명",
+    "업체명",
+    "약품규격",
+    "제품총수량",
+    "제형구분",
+    "포장형태",
+    "품목기준코드",
+    "취소일자",
+    "양도양수종료일자"
+  ],
+  "catalogSha256": "b3a23b6793469f4f2fac51cd513b6a50def88b36b2e7589541848c83c5cee0ce"
+}

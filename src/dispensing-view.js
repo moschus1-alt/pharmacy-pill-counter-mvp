@@ -8,16 +8,18 @@ export const dispensingView=`
       <label for="product-barcode">제품 바코드</label>
       <div class="input-action"><input id="product-barcode" name="barcode" autocomplete="off" spellcheck="false" maxlength="200" placeholder="스캔하거나 바코드를 입력하세요" required><button id="barcode-apply" type="button" class="secondary">적용</button></div>
       <button id="barcode-open" type="button" class="primary full">카메라로 바코드 읽기</button>
-      <p id="barcode-status" class="helper" role="status">처음 읽는 제품은 제품명을 입력해 주세요. 등록한 제품은 이 기기에서 다시 불러올 수 있어요.</p>
+      <p id="barcode-status" class="helper" role="status">바코드를 읽으면 심평원 공개 데이터에서 제품 정보를 찾아요. 조회 후 현재 포장과 대조해 주세요.</p>
+      <p id="product-lookup-details" class="helper" role="status"></p>
       <div class="dispense-fields">
         <label class="span-two">제품명 <input id="product-name" maxlength="80" autocomplete="off" placeholder="포장에 표시된 제품명" required></label>
         <label>함량·규격 <input id="product-strength" maxlength="40" placeholder="예: 500 mg"></label>
-        <label>제조사 <input id="product-manufacturer" maxlength="60" placeholder="선택 입력"></label>
+        <label>제조·수입사 <input id="product-manufacturer" maxlength="60" placeholder="선택 입력"></label>
         <label>제조번호 <input id="product-lot" maxlength="40" autocomplete="off" placeholder="포장의 LOT 번호"></label>
         <label>제품 사용기한 <input id="product-expiry" type="date"></label>
       </div>
       <label class="check-label"><input id="remember-product" type="checkbox" checked><span>제품명·함량·제조사를 이 기기에 저장</span></label>
       <p class="helper">제조번호와 사용기한은 매 포장에서 확인해 주세요.</p>
+      <p class="helper">출처: <a href="https://www.data.go.kr/data/15067462/fileData.do" target="_blank" rel="noopener noreferrer">건강보험심사평가원 의약품표준코드</a> · 공공누리 제1유형. 정기 공개 자료이며 일부 제품은 조회되지 않을 수 있어요.</p>
     </section>
     <section class="dispense-card" aria-labelledby="dispense-count-heading">
       <div class="section-title"><span class="step-number">2</span><h2 id="dispense-count-heading">소분할 수량 확인</h2></div>

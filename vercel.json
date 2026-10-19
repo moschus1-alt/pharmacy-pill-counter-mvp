@@ -6,10 +6,13 @@
   "outputDirectory": "dist",
   "regions": ["icn1"],
   "functions": {
+    "api/product-lookup.js": {
+      "includeFiles": "data/**"
+    },
     "api/analyze.py": {
       "maxDuration": 120,
       "includeFiles": "private-model/**",
-      "excludeFiles": "{models/**,vendor/**,dist/**,src/**,examples/**,licenses/**,.git/**}"
+      "excludeFiles": "{data/**,scripts/**,models/**,vendor/**,dist/**,src/**,examples/**,licenses/**,.git/**}"
     }
   },
   "headers": [

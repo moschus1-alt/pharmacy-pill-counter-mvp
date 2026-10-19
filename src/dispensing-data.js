@@ -42,6 +42,7 @@ export function validCount(value) {return Number.isSafeInteger(value)&&value>0&&
 export function labelIssues(data) {
   const issues=[];
   if (!data.code || !data.name.trim()) issues.push('바코드와 제품명을 입력해 주세요.');
+  if (data.name.length>80||data.strength.length>40||data.manufacturer.length>60) issues.push('제품명은 80자, 함량·규격은 40자, 제조·수입사는 60자 이내로 라벨에 맞게 입력해 주세요.');
   if (!validCount(data.count)) issues.push('알약을 카운팅하고 수량 확인을 완료해 주세요.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data.packedOn)) issues.push('소분일을 입력해 주세요.');
   if (data.expiry && data.expiry<data.packedOn) issues.push('제품 사용기한이 소분일보다 이전이에요. 포장을 다시 확인해 주세요.');

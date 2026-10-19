@@ -3,6 +3,7 @@ import {parseProductBarcode,localDate,labelIssues,validCount} from './dispensing
 import {createLabel,labelFits,printLabel} from './label-view.js';
 import {barcodeScanner} from './barcode-scanner.js';
 import {printConnection} from './print-connection.js';
+import {normalizeProductCode} from './product-code.js';
 
 export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
   const $=id=>document.getElementById(id),catalogKey='pill-products-v1';
@@ -12,6 +13,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
   document.querySelector('.counter').before($('dispense-count-banner'));
   let product=null,count=null,connection=null,sending=false,sendJob=null,statusTimer=null;
   const fields={name:'product-name',strength:'product-strength',manufacturer:'product-manufacturer',lot:'product-lot',expiry:'product-expiry',packedOn:'packed-on',useBy:'use-by',size:'label-size',copies:'label-copies'};
+  let lookupController=null,lookupVersion=0,lookupPending=false;
   let catalog={};try{catalog=JSON.parse(localStorage.getItem(catalogKey)||'{}');if(!catalog||typeof catalog!=='object'||Array.isArray(catalog))catalog={};}catch{ /* Continue without a saved catalog. */ }
   $('packed-on').value=localDate();
   function labelData() {
@@ -25,22 +27,66 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     if(clearQuantity){count=null;cancelCounting();}
     render();
   }
-  function applyBarcode() {
+  function stopLookup() {
+    lookupVersion++;lookupController?.abort();lookupController=null;lookupPending=false;
+  }
+  function savedProduct(code) {
+    const normalized=normalizeProductCode(code);
+    for(const key of [code,normalized,normalized?.length===13?'0'+normalized:null])
+      if(key&&Object.hasOwn(catalog,key))return catalog[key];
+    return null;
+  }
+  async function lookupBarcode(parsed,saved) {
+    const code=normalizeProductCode(parsed.code);
+    if(!code){
+      $('barcode-status').textContent=saved?'이 기기에 저장한 제품이에요. 공식 조회에 사용할 수 없는 코드이므로 포장과 대조해 주세요.':'공식 조회에는 검증번호가 맞는 13·14자리 제품코드가 필요해요. 바코드를 다시 읽거나 제품명을 직접 입력해 주세요.';
+      return;
+    }
+    const version=++lookupVersion,controller=new AbortController();lookupController=controller;lookupPending=true;
+    $('barcode-status').textContent='심평원 공개 데이터에서 제품을 찾고 있어요…';render();
+    const timeout=setTimeout(()=>controller.abort(),10000);
+    try {
+      const response=await fetch('/api/product-lookup?'+new URLSearchParams({code}),{signal:controller.signal});
+      if(!response.ok)throw Error('Lookup unavailable');
+      const result=await response.json();
+      if(version!==lookupVersion)return;
+      const source=result.source?`심평원 · ${result.source.asOf} 기준`:'심평원 공개 데이터';
+      if(result.status==='found'&&result.product?.code===code&&typeof result.product.name==='string') {
+        for(const key of ['name','strength','manufacturer'])$(fields[key]).value=result.product[key]||'';
+        $('barcode-status').textContent=`제품 정보를 찾았어요. ${source}. 현재 포장과 제품명·규격을 대조해 주세요.`;
+        const item=result.product;
+        $('product-lookup-details').textContent=[item.packageQuantity&&item.packageQuantity!=='0'?`등록 포장 수량: ${item.packageQuantity}`:'',item.packageType?`포장: ${item.packageType}`:'','소분 수량은 촬영 후 확인한 값으로 입력돼요.'].filter(Boolean).join(' · ');
+        changed();
+      } else if(result.status==='historical'||result.status==='ambiguous') {
+        for(const key of ['name','strength','manufacturer'])$(fields[key]).value='';
+        $('barcode-status').textContent=result.status==='historical'?`취소·양도 이력이 있는 코드예요. ${source}. 현재 포장을 확인하고 제품 정보를 직접 입력해 주세요.`:`같은 코드에 여러 제품 정보가 있어 자동 입력하지 않았어요. ${source}. 포장을 확인하고 직접 입력해 주세요.`;
+        changed();
+      } else if(result.status==='not_found') {
+        $('barcode-status').textContent=`${source} 목록에서 코드를 찾지 못했어요. `+(saved?'이 기기에 저장한 정보를 불러왔으니 현재 포장과 대조해 주세요.':'포장의 제품 정보를 직접 입력해 주세요.');
+      } else throw Error('Unexpected lookup response');
+    }catch {
+      if(version!==lookupVersion)return;
+      $('barcode-status').textContent='제품 조회에 연결하지 못했어요. '+(saved?'이 기기에 저장한 정보를 포장과 대조해 주세요.':'포장의 제품 정보를 직접 입력하거나 적용을 눌러 다시 조회해 주세요.');
+    }finally {
+      clearTimeout(timeout);
+      if(version===lookupVersion){lookupPending=false;lookupController=null;render();}
+    }
+  }
+  function applyBarcode({force=false}={}) {
     const parsed=parseProductBarcode($('product-barcode').value);
-    if(product?.raw===parsed.raw)return;
-    product=parsed;
-    const saved=Object.hasOwn(catalog,parsed.code)?catalog[parsed.code]:null;
+    if(product?.raw===parsed.raw&&!force)return;
+    stopLookup();product=parsed;
+    const saved=savedProduct(parsed.code);
     for(const key of ['name','strength','manufacturer'])$(fields[key]).value=typeof saved?.[key]==='string'?saved[key]:'';
     $('product-lot').value=parsed.lot;$('product-expiry').value=parsed.expiry;
-    $('use-by').value='';$('packed-on').value=localDate();
-    $('barcode-status').textContent=saved?'이 기기에 저장한 제품을 불러왔어요. 현재 포장과 대조해 주세요.':'새 제품이에요. 포장의 제품명을 입력해 주세요.';
-    if(parsed.lot||parsed.expiry)$('barcode-status').textContent+=' 바코드의 제조번호·사용기한도 확인해 주세요.';
+    $('use-by').value='';$('packed-on').value=localDate();$('product-lookup-details').textContent='';
     changed({clearQuantity:true});
+    void lookupBarcode(parsed,saved);
   }
   function remember() {
     if(!$('remember-product').checked||!product)return;
     const data=labelData();
-    Object.defineProperty(catalog,product.code,{value:{name:data.name,strength:data.strength,manufacturer:data.manufacturer},enumerable:true,configurable:true,writable:true});
+    Object.defineProperty(catalog,normalizeProductCode(product.code)||product.code,{value:{name:data.name,strength:data.strength,manufacturer:data.manufacturer},enumerable:true,configurable:true,writable:true});
     // Keep the catalog bounded on shared tablets/phones.
     const entries=Object.entries(catalog).slice(-500);catalog=Object.fromEntries(entries);
     try{localStorage.setItem(catalogKey,JSON.stringify(catalog));}catch{$('barcode-status').textContent='기기 저장 공간을 사용할 수 없어요. 이번 라벨은 계속 만들 수 있어요.';}
@@ -50,6 +96,8 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     const data=labelData(),paper=createLabel(data);
     $('label-preview').replaceChildren(paper);
     const issues=labelIssues(data);
+    if(lookupPending)issues.unshift('제품 정보를 조회하고 있어요.');
+    $('dispense-start-count').disabled=sending||lookupPending;
     if(product?.raw!==$('product-barcode').value.trim().replace(/^\](?:C1|d2|Q3)/,''))issues.unshift('입력한 바코드를 적용해 주세요.');
     // Hidden tabs have no layout; check again when the tab becomes visible.
     if(!$('dispense-panel').hidden&&!labelFits(paper))issues.push('내용이 라벨 크기를 넘어가요. 큰 라벨을 선택하거나 제품명·함량을 줄여 주세요.');
@@ -69,15 +117,22 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     try{applyBarcode();}catch(error){$('barcode-status').textContent=error.message;}
   });
   $('barcode-open').onclick=()=>void scanner.start();
-  $('barcode-apply').onclick=()=>{try{applyBarcode();}catch(error){$('barcode-status').textContent=error.message;}};
-  $('product-barcode').addEventListener('input',()=>changed({clearQuantity:true}));
+  $('barcode-apply').onclick=()=>{try{applyBarcode({force:true});}catch(error){$('barcode-status').textContent=error.message;}};
+  $('product-barcode').addEventListener('input',()=>{stopLookup();$('barcode-status').textContent='적용을 누르면 제품 정보를 조회해요.';$('product-lookup-details').textContent='';changed({clearQuantity:true});});
   $('product-barcode').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('barcode-apply').click();}});
-  for(const id of Object.values(fields))$(id).addEventListener('input',()=>changed());
+  for(const [key,id] of Object.entries(fields))$(id).addEventListener('input',()=>{
+    if(['name','strength','manufacturer'].includes(key)){
+      if(lookupPending)stopLookup();
+      $('barcode-status').textContent='직접 입력한 제품 정보예요. 현재 포장과 대조해 주세요.';
+      $('product-lookup-details').textContent='';
+    }
+    changed();
+  });
   $('label-reviewed').onchange=render;
   $('dispense-form').onsubmit=event=>{
     event.preventDefault();
     try{applyBarcode();}catch(error){$('barcode-status').textContent=error.message;return;}
-    if(!$('dispense-form').reportValidity())return;
+    if(lookupPending||!$('dispense-form').reportValidity())return;
     remember();count=null;changed();
     $('dispense-count-product').textContent=$('product-name').value;
     startCounting();
@@ -113,7 +168,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
   };
   $('dispense-new').onclick=()=>{
     if((count!==null||$('product-name').value)&&!window.confirm('현재 라벨 입력을 비우고 다음 소분을 시작할까요? 이미 PC에 보낸 요청은 그대로 남아요.'))return;
-    product=null;count=null;$('dispense-form').reset();$('packed-on').value=localDate();changed({clearQuantity:true});
+    stopLookup();$('product-lookup-details').textContent='';product=null;count=null;$('dispense-form').reset();$('packed-on').value=localDate();changed({clearQuantity:true});
     $('barcode-status').textContent='다음 제품의 바코드를 읽어 주세요.';$('product-barcode').focus();
   };
   $('dispense-return').onclick=openDispensing;

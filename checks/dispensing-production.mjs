@@ -32,8 +32,10 @@ try {
   const pairing=await desktop.evaluate(()=>{const station=JSON.parse(sessionStorage.getItem('pill-label-station-v1'));return `${location.origin}/?test#pc=${station.id}.${station.pairToken}`;});
   await desktop.locator('#printer-dialog-close').click();
   await mobile.goto(pairing,{waitUntil:'networkidle'});await mobile.waitForFunction(()=>document.getElementById('pc-connection-status').textContent.includes('연결됨'));
-  await mobile.locator('#product-barcode').fill('(01)08801234567890(17)291231(10)TEST001');await mobile.locator('#barcode-apply').click();
-  await mobile.locator('#product-name').fill('출력 시험용 예제정');await mobile.locator('#product-strength').fill('시험용 라벨');
+  await mobile.locator('#product-barcode').fill('(01)08806723002015(17)291231(10)TEST001');await mobile.locator('#barcode-apply').click();
+  await mobile.waitForFunction(()=>document.getElementById('barcode-status').textContent.includes('제품 정보를 찾았어요'));
+  const actualProduct=await mobile.locator('#product-name').inputValue();
+  assert.equal(actualProduct,'약국용타이레놀정500mg(아세트아미노펜)');
   await mobile.locator('#dispense-start-count').click();
   const inference=mobile.waitForResponse(response=>response.url().endsWith('/api/analyze')&&response.request().method()==='POST',{timeout:120000});
   await mobile.locator('#file-input').setInputFiles(fileURLToPath(new URL('../examples/mediseg-8-pills.png',import.meta.url)));
@@ -47,6 +49,7 @@ try {
   await desktop.waitForFunction(()=>document.querySelectorAll('.received-job').length===1,{},{timeout:30000});
   await desktop.getByRole('button',{name:'라벨 보기·출력',exact:true}).click();
   assert.equal(await desktop.locator('#received-label-preview .label-heading strong').innerText(),'8개');
+  assert.match(await desktop.locator('#received-label-preview').innerText(),/약국용타이레놀정500mg/);
   await desktop.screenshot({path:results+'/production-dispensing-pc.png',fullPage:true});
   await desktop.locator('#received-label-print').click();assert.equal(await desktop.evaluate(()=>window.printCalls),1);
   // Verify print media renders only the 60 x 40 mm label, not the app/dialog.
@@ -59,7 +62,7 @@ try {
   await desktop.locator('#received-label-done').click();
   await mobile.waitForFunction(()=>document.getElementById('label-send-status').textContent.includes('실제 출력 완료'),{},{timeout:30000});
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({url:base,actualModelCount:actualCount,inferenceStatus:inferred.status(),privateBlobRelay:'passed',phoneToPcFlow:'passed',printLayout:'60x40 mm',physicalPrinter:'not exercised',browserErrors:errors}));
+  console.log(JSON.stringify({url:base,automaticProduct:actualProduct,actualModelCount:actualCount,inferenceStatus:inferred.status(),privateBlobRelay:'passed',phoneToPcFlow:'passed',printLayout:'60x40 mm',physicalPrinter:'not exercised',browserErrors:errors}));
 }finally {
   if(created) {
     await desktop.evaluate(async()=>{const station=JSON.parse(sessionStorage.getItem('pill-label-station-v1')||'null');if(station){const response=await fetch('/api/print-relay',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${station.ownerToken}`},body:JSON.stringify({action:'close',station:station.id})});if(!response.ok)throw Error('Test station cleanup failed: '+response.status);}}).catch(error=>console.error(error.message));
