@@ -54,18 +54,19 @@ try {
   assert.equal(await desktop.locator('#received-label-preview .label-heading strong').innerText(),'8개');
   assert.match(await desktop.locator('#received-label-preview').innerText(),/약국용타이레놀정500mg/);
   await desktop.screenshot({path:results+'/production-dispensing-pc.png',fullPage:true});
+  assert.match(await desktop.locator('#received-label-meta').innerText(),/DK-22210.*29 × 90 mm/);
   await desktop.locator('#received-label-print').click();assert.equal(await desktop.evaluate(()=>window.printCalls),1);
-  // Verify print media renders only the 60 x 40 mm label, not the app/dialog.
+  // Verify print media renders only the 29 x 90 mm label, not the app/dialog.
   await desktop.emulateMedia({media:'print'});
   assert.equal(await desktop.locator('main').isVisible(),false);
   assert.equal(await desktop.locator('#label-print-area .label-paper').count(),1);
-  const box=await desktop.locator('#label-print-area .label-paper').boundingBox();assert(Math.abs(box.width-60*96/25.4)<1);assert(Math.abs(box.height-40*96/25.4)<1);
-  await desktop.pdf({path:results+'/production-label-60x40.pdf',preferCSSPageSize:true,printBackground:true});
+  const box=await desktop.locator('#label-print-area .label-paper').boundingBox();assert(Math.abs(box.width-29*96/25.4)<1);assert(Math.abs(box.height-90*96/25.4)<1);
+  await desktop.pdf({path:results+'/production-label-dk22210-29x90.pdf',preferCSSPageSize:true,printBackground:true});
   await desktop.emulateMedia({media:'screen'});
   await desktop.locator('#received-label-done').click();
   await mobile.waitForFunction(()=>document.getElementById('label-send-status').textContent.includes('실제 출력 완료'),{},{timeout:30000});
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({url:base,automaticProduct:actualProduct,actualModelCount:actualCount,inferenceStatus:inferred.status(),privateBlobRelay:'passed',phoneToPcFlow:'passed',printLayout:'60x40 mm',physicalPrinter:'not exercised',browserErrors:errors}));
+  console.log(JSON.stringify({url:base,automaticProduct:actualProduct,actualModelCount:actualCount,inferenceStatus:inferred.status(),privateBlobRelay:'passed',phoneToPcFlow:'passed',printLayout:'DK-22210 29x90 mm',physicalPrinter:'not exercised',browserErrors:errors}));
 }finally {
   if(created) {
     await desktop.evaluate(async()=>{const station=JSON.parse(sessionStorage.getItem('pill-label-station-v1')||'null');if(station){const response=await fetch('/api/print-relay',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${station.ownerToken}`},body:JSON.stringify({action:'close',station:station.id})});if(!response.ok)throw Error('Test station cleanup failed: '+response.status);}}).catch(error=>console.error(error.message));

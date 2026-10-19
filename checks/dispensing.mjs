@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve,extname,sep} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {chromium} from 'playwright';
-import {parseProductBarcode,gs1Expiry,localDate} from '../src/dispensing-data.js';
+import {parseProductBarcode,gs1Expiry,localDate,labelDimensions} from '../src/dispensing-data.js';
 import {createRelay,normalizeLabel} from '../api/print-relay.js';
 
 assert.deepEqual(parseProductBarcode(']d201088012345678901729123110LOT123\x1d21SERIAL'),{raw:'01088012345678901729123110LOT123\x1d21SERIAL',code:'08801234567890',lot:'LOT123',expiry:'2029-12-31'});
@@ -16,6 +16,14 @@ assert.throws(()=>parseProductBarcode('\x00bad'));
 const sample={code:'8801234567890',name:'테스트정',strength:'500 mg',manufacturer:'테스트제약',lot:'LOT001',expiry:'2029-12-31',packedOn:localDate(),useBy:'',size:'60x40',copies:1,count:8};
 assert.throws(()=>normalizeLabel({...sample,count:-1}));assert.throws(()=>normalizeLabel({...sample,count:1.5}));assert.throws(()=>normalizeLabel({...sample,expiry:'2029-02-31'}));assert.throws(()=>normalizeLabel({...sample,copies:21}));
 
+for(const size of ['custom','dk22210']) {
+  const label=normalizeLabel({...sample,size,widthMm:29,heightMm:90.5});
+  assert.deepEqual(labelDimensions(label),[29,90.5]);
+  for(const heightMm of [undefined,null,'90',NaN,Infinity,0,11.9,200.1,90.55])assert.throws(()=>normalizeLabel({...sample,size,widthMm:29,heightMm}));
+}
+assert.throws(()=>normalizeLabel({...sample,size:'dk22210',widthMm:62,heightMm:90}));
+assert.throws(()=>normalizeLabel({...sample,size:'custom',widthMm:'29',heightMm:90}));
+assert.deepEqual(labelDimensions(normalizeLabel({...sample,size:'62x100'})),[62,100]);
 const values=new Map();let clock=Date.now();
 const store={async read(path){return values.get(path)||null;},async write(path,value,overwrite=false){if(values.has(path)&&!overwrite)throw Error('duplicate');values.set(path,structuredClone(value));},async paths(prefix,limit=100){return [...values.keys()].filter(path=>path.startsWith(prefix)).sort().slice(0,limit).map(path=>({path,uploadedAt:clock}));},async remove(paths){for(const path of paths)values.delete(path);}};
 const relay=createRelay(store,()=>clock);
@@ -30,7 +38,9 @@ assert.equal((await call('pair',sender)).status,200);
 assert.equal((await call('pair',{...sender,token:'0'.repeat(64)})).status,403);
 assert.equal((await call('jobs',sender,{},'GET')).status,403);
 const jobId=randomUUID();
-assert.equal((await call('submit',sender,{jobId,label:sample})).status,200);
+const rollLabel={...sample,size:'dk22210',widthMm:29,heightMm:90.5};
+assert.equal((await call('submit',sender,{jobId,label:rollLabel})).status,200);
+assert.deepEqual((await call('jobs',owner,{},'GET')).body.jobs[0].label,rollLabel);
 assert.equal((await call('submit',sender,{jobId,label:sample})).body.duplicate,true);
 assert.equal((await call('jobs',owner,{},'GET')).body.jobs.length,1);
 assert.equal((await call('printed',sender,{jobId})).status,403);
@@ -61,7 +71,15 @@ const pc=await browser.newContext({viewport:{width:1280,height:900}}),phone=awai
 const desktop=await pc.newPage(),mobile=await phone.newPage(),errors=[];
 for(const page of [desktop,mobile]){page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());await page.addInitScript(()=>{window.printCalls=0;window.print=()=>{window.printCalls++;};});}
 try {
-  await desktop.goto(base+'/?test');await desktop.locator('#dispense-tab').click();await desktop.locator('#printer-settings').click();await desktop.locator('#station-create').click();
+  await desktop.goto(base+'/?test');await desktop.locator('#dispense-tab').click();
+  assert.equal(await desktop.locator('#label-size').inputValue(),'dk22210');
+  assert.equal(await desktop.locator('#label-width').inputValue(),'29');assert(await desktop.locator('#label-width').isDisabled());
+  await desktop.locator('#label-height').fill('90.5');
+  await desktop.locator('#printer-settings').click();await desktop.locator('#printer-test').click();
+  assert.equal(await desktop.evaluate(()=>window.printCalls),1);
+  assert.match(await desktop.locator('#label-page-style').textContent(),/size: 29mm 90.5mm/);
+  await desktop.evaluate(()=>window.printCalls=0);
+  await desktop.locator('#station-create').click();
   await desktop.waitForFunction(()=>!!sessionStorage.getItem('pill-label-station-v1'));
   const pairing=await desktop.evaluate(()=>{const station=JSON.parse(sessionStorage.getItem('pill-label-station-v1'));return `${location.origin}/?test#pc=${station.id}.${station.pairToken}`;});
   assert(await desktop.locator('#station-qr svg').isVisible());
@@ -71,6 +89,11 @@ try {
   assert.equal(await mobile.evaluate(()=>location.hash),'');
   assert.equal(await mobile.locator('#pc-banner-title').innerText(),'PC 연결됨');
   assert.match(await mobile.locator('#pc-banner-detail').innerText(),/약국 라벨 PC/);
+  await mobile.locator('#label-size').selectOption('custom');await mobile.locator('#label-width').fill('54.2');await mobile.locator('#label-height').fill('35');
+  await mobile.reload();await mobile.locator('#dispense-tab').click();
+  assert.equal(await mobile.locator('#label-size').inputValue(),'custom');assert.equal(await mobile.locator('#label-width').inputValue(),'54.2');assert.equal(await mobile.locator('#label-height').inputValue(),'35');
+  await mobile.locator('#dispense-new').click();assert.equal(await mobile.locator('#label-width').inputValue(),'54.2');
+  await mobile.locator('#label-size').selectOption('dk22210');assert.equal(await mobile.locator('#label-width').inputValue(),'29');await mobile.locator('#label-height').fill('90.5');
   await mobile.locator('#label-size').scrollIntoViewIfNeeded();
   const bannerBox=await mobile.locator('#pc-connection-banner').boundingBox();assert(bannerBox.y>=0&&bannerBox.y<30);
   await mobile.locator('#pc-connection-banner').click();assert(await mobile.locator('#printer-dialog').isVisible());await mobile.locator('#printer-dialog-close').click();
@@ -84,12 +107,19 @@ try {
   await mobile.locator('#confirm').click();await mobile.waitForFunction(()=>document.getElementById('dispense-count').value==='8');
   assert(await mobile.locator('#label-send').isDisabled());await mobile.locator('#label-reviewed').check();
   assert(await mobile.locator('#label-send').isEnabled());
+  await mobile.locator('#label-height').fill('12');await mobile.locator('#label-reviewed').check();assert(await mobile.locator('#label-send').isDisabled());
+  await mobile.locator('#label-height').fill('90.5');await mobile.locator('#label-reviewed').check();assert(await mobile.locator('#label-send').isEnabled());
   await mobile.locator('#label-send').click();await mobile.waitForFunction(()=>document.getElementById('label-send').textContent==='PC로 전송했어요');
   await desktop.waitForFunction(()=>document.querySelectorAll('.received-job').length===1,{},{timeout:15000});
   await desktop.getByRole('button',{name:'라벨 보기·출력',exact:true}).click();
   assert.equal(await desktop.locator('#received-label-preview .label-heading strong').innerText(),'8개');
   assert(await desktop.locator('#received-label-done').isDisabled());
   await desktop.locator('#received-label-print').click();assert.equal(await desktop.evaluate(()=>window.printCalls),1);
+  assert.match(await desktop.locator('#received-label-meta').innerText(),/DK-22210.*29 × 90.5 mm/);
+  assert.match(await desktop.locator('#label-page-style').textContent(),/size: 29mm 90.5mm/);
+  await desktop.emulateMedia({media:'print'});
+  const paper=await desktop.locator('#label-print-area .label-paper').boundingBox();assert(Math.abs(paper.width-29*96/25.4)<1);assert(Math.abs(paper.height-90.5*96/25.4)<1);
+  await desktop.emulateMedia({media:'screen'});
   await desktop.locator('#received-label-done').click();
   await mobile.waitForFunction(()=>document.getElementById('label-send-status').textContent.includes('실제 출력 완료'),{},{timeout:15000});
   assert.equal(await desktop.locator('.received-job').count(),0);

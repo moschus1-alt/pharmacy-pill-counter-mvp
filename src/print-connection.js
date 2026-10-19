@@ -1,5 +1,5 @@
 import {createLabel,printLabel} from './label-view.js';
-import {localDate} from './dispensing-data.js';
+import {localDate,labelSizeText} from './dispensing-data.js';
 
 const $=id=>document.getElementById(id),senderKey='pill-label-sender-v1',stationKey='pill-label-station-v1';
 function readSession(key){try{return JSON.parse(sessionStorage.getItem(key)||'null');}catch{return null;}}
@@ -15,7 +15,7 @@ export async function relayRequest(action,session={},data={},get=false) {
   return result;
 }
 
-export function printConnection({onChange,onOpenDispensing}) {
+export function printConnection({onChange,onOpenDispensing,getPaperSettings=()=>({size:'60x40'})}) {
   let sender=readSession(senderKey),station=readSession(stationKey),pollTimer=null,polling=false,activeJob=null,jobs=[],pairURL='',disposed=false,connectionTimer=null,stationIssue=false;
   const connectionMessage=text=>$('printer-connection-message').textContent=text;
   function sync() {
@@ -92,7 +92,7 @@ export function printConnection({onChange,onOpenDispensing}) {
   function openJob(job) {
     activeJob=job;
     $('received-label-preview').replaceChildren(createLabel(job.label));
-    $('received-label-meta').textContent=`${job.label.count}개 · 동일 라벨 ${job.label.copies}장 · ${job.label.size.replace('x',' × ')} mm`;
+    $('received-label-meta').textContent=`${job.label.count}개 · 동일 라벨 ${job.label.copies}장 · ${labelSizeText(job.label)}`;
     $('received-label-status').textContent='제품명과 수량을 확인한 뒤 인쇄해 주세요.';
     $('received-label-done').disabled=true;$('received-label-print').disabled=false;
     $('received-label-dialog').showModal();
@@ -126,7 +126,7 @@ export function printConnection({onChange,onOpenDispensing}) {
     finally{$('station-close').disabled=false;}
   };
   $('printer-test').onclick=()=>{
-    try{printLabel({name:'프린터 연결 테스트',code:'1234567890128',count:1,packedOn:localDate(),copies:1,size:'60x40'},{test:true});connectionMessage('인쇄 창에서 PC에 연결된 라벨프린터를 선택해 주세요.');}
+    try{printLabel({name:'프린터 연결 테스트',code:'1234567890128',count:1,packedOn:localDate(),copies:1,...getPaperSettings()},{test:true});connectionMessage('인쇄 창에서 PC에 연결된 라벨프린터를 선택해 주세요.');}
     catch(error){connectionMessage(error.message);}
   };
   $('received-label-close').onclick=()=>$('received-label-dialog').close();

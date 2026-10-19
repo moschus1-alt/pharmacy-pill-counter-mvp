@@ -20,3 +20,7 @@
   #label-print-area .label-paper{margin:0!important;box-shadow:none!important;border:0!important;break-after:page;break-inside:avoid;page-break-inside:avoid;color:#000!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
   #label-print-area .label-paper:last-child{break-after:auto}
 }
+
+.printer-setup-guide{padding:14px;background:#edf5ef;border-radius:12px;font-size:13px;line-height:1.65}.printer-setup-guide ol{padding-left:20px;margin:10px 0}.printer-setup-guide li+li{margin-top:7px}.local-print-options{margin-top:14px;font-size:12px}.local-print-options summary{cursor:pointer;color:var(--muted);padding:8px 0}.local-print-options .helper{margin-top:8px}
+
+.label-brother{padding:3mm 1.5mm}.label-narrow{gap:.7mm}.label-narrow .label-heading{flex-wrap:wrap;gap:1mm}.label-narrow .label-details,.label-narrow .label-strength{font-size:7pt}.label-narrow .label-product{font-size:9pt}

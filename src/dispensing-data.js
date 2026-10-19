@@ -1,4 +1,20 @@
-export const LABEL_SIZES = Object.freeze({'60x40':[60,40], '70x50':[70,50], '50x30':[50,30]});
+export const LABEL_SIZES = Object.freeze({'60x40':[60,40], '70x50':[70,50], '50x30':[50,30], '62x29':[62,29], '62x100':[62,100], '29x90':[29,90]});
+
+function validPaperDimension(value) {return typeof value==='number'&&Number.isFinite(value)&&value>=12&&value<=200&&Math.abs(value*10-Math.round(value*10))<1e-6;}
+
+export function labelDimensions(data) {
+  if(data.size==='dk22210') {
+    if(data.widthMm!==29||!validPaperDimension(data.heightMm))return null;
+    return [29,data.heightMm];
+  }
+  if(data.size!=='custom')return Object.hasOwn(LABEL_SIZES,data.size)?LABEL_SIZES[data.size]:null;
+  const {widthMm,heightMm}=data;
+  if(![widthMm,heightMm].every(validPaperDimension))return null;
+  return [widthMm,heightMm];
+}
+export function labelSizeText(data) {
+  const size=labelDimensions(data);return size?`${data.size==='dk22210'?'DK-22210 · ':''}${size[0]} × ${size[1]} mm`:'용지 크기를 확인해 주세요';
+}
 
 export function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -54,7 +70,7 @@ export function labelIssues(data) {
   if (data.expiry && data.expiry<data.packedOn) issues.push('제품 사용기한이 소분일보다 이전이에요. 포장을 다시 확인해 주세요.');
   if (data.useBy && data.useBy<data.packedOn) issues.push('소분 후 사용기한은 소분일 이후로 입력해 주세요.');
   if (data.expiry && data.useBy && data.useBy>data.expiry) issues.push('소분 후 사용기한이 제품 사용기한을 넘을 수 없어요.');
-  if (!LABEL_SIZES[data.size]) issues.push('라벨 크기를 선택해 주세요.');
+  if (!labelDimensions(data)) issues.push('라벨 폭·길이는 각각 12~200 mm, 소수점 한 자리 이내로 입력해 주세요.');
   if (!Number.isInteger(data.copies)||data.copies<1||data.copies>20) issues.push('출력 매수는 1~20장으로 입력해 주세요.');
   return issues;
 }

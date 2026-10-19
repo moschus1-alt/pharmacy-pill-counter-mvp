@@ -1,14 +1,16 @@
-import {LABEL_SIZES} from './dispensing-data.js';
+import {LABEL_SIZES,labelDimensions} from './dispensing-data.js';
 
 function element(tag,text,className='') {
   const node=document.createElement(tag);node.textContent=text;node.className=className;return node;
 }
 export function createLabel(data,{test=false}={}) {
-  const size=LABEL_SIZES[data.size]||LABEL_SIZES['60x40'];
+  const size=labelDimensions(data)||LABEL_SIZES['60x40'];
   const paper=element('article','','label-paper');
   paper.style.setProperty('--label-width',`${size[0]}mm`);
   paper.style.setProperty('--label-height',`${size[1]}mm`);
-  paper.classList.toggle('label-small',data.size==='50x30');
+  paper.classList.toggle('label-small',size[0]<=50||size[1]<=30);
+  paper.classList.toggle('label-narrow',size[0]<=29);
+  paper.classList.toggle('label-brother',data.size==='dk22210'||['62x29','62x100','29x90'].includes(data.size));
   const heading=element('div','','label-heading');
   heading.append(element('span',test?'프린터 테스트':'의약품 예제소분'),element('strong',`${data.count??'—'}개`));
   paper.append(heading,element('h3',data.name||'제품명을 입력해 주세요','label-product'));
@@ -39,12 +41,14 @@ export function labelFits(node) {
 export function printLabel(data,{test=false}={}) {
   const region=document.getElementById('label-print-area');
   region.replaceChildren(...Array.from({length:test?1:data.copies},()=>createLabel(data,{test})));
-  const [width,height]=LABEL_SIZES[data.size];
+  const size=labelDimensions(data);
+  if(!size)throw Error('용지 폭·길이를 확인해 주세요.');
+  const [width,height]=size;
   document.getElementById('label-page-style').textContent=`@page { size: ${width}mm ${height}mm; margin: 0; }`;
   // Lay out a real-size label before printing so long fields cannot silently clip.
   region.classList.add('print-measuring');
   const fits=[...region.children].every(labelFits);
   region.classList.remove('print-measuring');
-  if(!fits)throw Error('내용이 라벨 크기를 넘어가요. 더 큰 라벨을 선택하거나 제품명·함량을 줄여 주세요.');
+  if(!fits)throw Error('내용이 라벨 크기를 넘어가요. 연속 용지의 길이를 늘리거나 더 큰 라벨을 선택해 주세요.');
   window.print();
 }

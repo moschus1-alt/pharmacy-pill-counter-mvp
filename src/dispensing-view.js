@@ -37,16 +37,23 @@ export const dispensingView=`
       <div class="dispense-fields">
         <label>소분일 <input id="packed-on" type="date" required></label>
         <label>소분 후 사용기한 <input id="use-by" type="date"></label>
-        <label>라벨 크기 <select id="label-size"><option value="60x40">60 × 40 mm</option><option value="70x50">70 × 50 mm</option><option value="50x30">50 × 30 mm</option></select></label>
+        <label>라벨 크기 <select id="label-size"><option value="dk22210" selected>DK-22210 · 29 mm 연속 (QL-550)</option><option value="60x40">60 × 40 mm</option><option value="70x50">70 × 50 mm</option><option value="50x30">50 × 30 mm</option><option value="62x29">62 × 29 mm · Brother DK</option><option value="62x100">62 × 100 mm · Brother DK</option><option value="29x90">29 × 90 mm · Brother DK</option><option value="custom">직접 입력 / 연속 용지</option></select></label>
         <label>동일 라벨 매수 <input id="label-copies" type="number" min="1" max="20" step="1" value="1" required></label>
       </div>
+      <div id="custom-label-fields" class="dispense-fields" hidden>
+        <label>용지 폭 (mm) <input id="label-width" type="number" min="12" max="200" step="0.1" value="29" inputmode="decimal"></label>
+        <label>라벨 한 장 길이 (mm) <input id="label-height" type="number" min="12" max="200" step="0.1" value="90" inputmode="decimal"></label>
+      </div>
+      <p id="label-paper-summary" class="helper" role="status"></p>
+      <p class="helper">DK-22210은 폭 29 mm 연속 용지예요. 한 장 길이는 우선 90 mm이며 조절할 수 있어요. QL-550은 롤 폭이 최대 62 mm예요. 연속 용지는 폭과 잘라낼 한 장 길이를 입력해 주세요. PC 인쇄 창에서도 같은 용지 크기를 선택해야 해요.</p>
       <p class="helper">소분 후 사용기한은 확인한 기준에 따라 직접 입력해 주세요.</p>
       <div class="label-preview-wrap"><div id="label-preview" aria-label="소분 라벨 미리보기"></div><p>선택한 용지 크기의 미리보기</p></div>
       <p id="label-validation" class="helper" role="status"></p>
       <label class="check-label review-label"><input id="label-reviewed" type="checkbox"><span>포장의 제품·제조번호·사용기한과 실제 수량을 확인했어요.</span></label>
       <div class="connection-summary"><span class="connection-dot" id="pc-connection-dot"></span><span id="pc-connection-status">출력 PC를 연결해 주세요</span><button id="pc-connect-inline" type="button" class="text-button">연결</button></div>
       <button id="label-send" type="button" class="primary full" disabled>PC로 라벨 전송</button>
-      <button id="label-print-local" type="button" class="secondary full" disabled>이 기기에서 직접 인쇄</button>
+      <p class="helper">PC에 연결한 QL-550으로 출력하려면 위 ‘PC로 라벨 전송’을 눌러 주세요.</p>
+      <details class="local-print-options"><summary>다른 방법: 이 기기의 인쇄 창</summary><p class="helper">휴대폰 인쇄 목록에서 PC의 USB 공유 프린터를 찾는 기능은 아니에요. QL-550은 PC 연결 후 라벨 전송을 이용해 주세요.</p><button id="label-print-local" type="button" class="secondary full" disabled>이 기기에서 직접 인쇄</button></details>
       <p id="label-send-status" class="helper" role="status" aria-live="polite"></p>
       <button id="dispense-new" type="button" class="text-button full">다음 소분 시작</button>
     </section>
@@ -59,12 +66,13 @@ export const dispensingView=`
 export const dispensingDialogs=`
 <dialog id="barcode-dialog" aria-labelledby="barcode-dialog-title"><div class="dialog-heading"><h2 id="barcode-dialog-title">바코드 읽기</h2><button type="button" class="close-button" data-scan-close aria-label="바코드 카메라 닫기">×</button></div><video muted autoplay playsinline aria-label="바코드 카메라"></video><p data-scan-status class="helper" role="status"></p><p class="helper">포장의 숫자 바코드 또는 GS1 DataMatrix를 읽을 수 있어요.</p></dialog>
 <dialog id="printer-dialog" aria-labelledby="printer-dialog-title"><div class="dialog-heading"><h2 id="printer-dialog-title">PC·프린터 연결</h2><button id="printer-dialog-close" class="close-button" aria-label="PC 연결 창 닫기">×</button></div>
+  <div class="printer-setup-guide"><strong>QL-550 · PC USB 프린터 연결 순서</strong><ol><li>프린터를 연결한 PC에서 윈도우 테스트 페이지를 인쇄해 주세요.</li><li>같은 PC에서 이 앱을 열고 ‘이 PC에서 라벨 받기’를 누르세요.</li><li>휴대폰 카메라로 PC의 QR을 읽고, 라벨을 PC로 전송하세요.</li><li>PC의 출력 대기에서 라벨을 열고 인쇄 대상에 Brother QL-550을 선택하세요.</li></ol><p>윈도우 공유 설정만으로 휴대폰에 프린터가 나타나지는 않아요. 이 앱의 연결 대상은 라벨을 받는 PC예요.</p></div>
   <h3>휴대폰에서 연결</h3><p class="helper">프린터가 연결된 PC에서 이 웹앱을 열고 아래 ‘이 PC에서 라벨 받기’를 눌러 주세요. PC에 나타난 QR을 휴대폰 카메라로 읽으면 연결돼요.</p>
   <label for="pc-link-input">PC 연결 링크</label><div class="input-action"><input id="pc-link-input" type="text" autocomplete="off" placeholder="PC의 연결 링크를 붙여 넣으세요"><button id="pc-link-apply" class="secondary">연결</button></div><button id="pc-disconnect" class="text-button" hidden>휴대폰 연결 해제</button>
   <hr><h3>프린터가 연결된 PC에서</h3><label for="station-name">PC 이름</label><input id="station-name" value="약국 라벨 PC" maxlength="40"><button id="station-create" class="primary full">이 PC에서 라벨 받기</button>
   <div id="station-pairing" hidden><div id="station-qr" aria-label="휴대폰 연결 QR"></div><p id="station-name-display"></p><p id="station-expiry" class="helper"></p><button id="station-copy" class="secondary full">휴대폰 연결 링크 복사</button><p class="helper">이 QR·링크를 가진 기기에서 라벨을 보낼 수 있어요. 연결은 최대 8시간 유지돼요.</p></div>
-  <p id="printer-connection-message" role="status" class="helper"></p><hr><h3>프린터 선택</h3><p class="helper">PC에 라벨프린터 드라이버를 설치한 뒤 인쇄 창에서 프린터를 선택해 주세요. USB 연결 프린터와 PC에 등록한 공유 프린터를 사용할 수 있어요. 용지 크기·배율 100%·여백 없음으로 설정해 주세요.</p><button id="printer-test" class="secondary full">테스트 라벨로 프린터 선택</button>
+  <p id="printer-connection-message" role="status" class="helper"></p><hr><h3>프린터 선택</h3><p class="helper">PC에 라벨프린터 드라이버를 설치한 뒤 인쇄 창에서 프린터를 선택해 주세요. USB 연결 프린터와 PC에 등록한 공유 프린터를 사용할 수 있어요. 인쇄 대상이 ‘PDF로 저장’이라면 대상을 변경해 Brother QL-550을 선택하세요. 다른 PC의 공유 프린터라면 먼저 이 PC의 윈도우 프린터 목록에 추가해야 해요. DK-22210은 드라이버에서 ‘29 mm 연속’을 고르고, 한 장 길이를 앱과 같게 설정하세요. 크기가 없으면 프린터 속성에서 사용자 정의 용지를 등록하세요. 배율 100%·여백 없음·머리글/바닥글 끔으로 설정해 주세요.</p><p id="printer-test-paper" class="helper"></p><button id="printer-test" class="secondary full">테스트 라벨로 프린터 선택</button>
 </dialog>
-<dialog id="received-label-dialog" aria-labelledby="received-label-title"><div class="dialog-heading"><h2 id="received-label-title">휴대폰에서 받은 라벨</h2><button id="received-label-close" class="close-button" aria-label="받은 라벨 닫기">×</button></div><p id="received-label-meta" class="helper"></p><div id="received-label-preview" class="label-preview-wrap"></div><p id="received-label-status" class="helper" role="status"></p><button id="received-label-print" class="primary full">프린터 선택·인쇄</button><button id="received-label-done" class="secondary full" disabled>실제 출력 완료 확인</button><p class="helper">인쇄를 취소했다면 완료를 누르지 마세요. 실제 출력물을 확인한 뒤 완료해 주세요.</p></dialog>
+<dialog id="received-label-dialog" aria-labelledby="received-label-title"><div class="dialog-heading"><h2 id="received-label-title">휴대폰에서 받은 라벨</h2><button id="received-label-close" class="close-button" aria-label="받은 라벨 닫기">×</button></div><p id="received-label-meta" class="helper"></p><div id="received-label-preview" class="label-preview-wrap"></div><p id="received-label-status" class="helper" role="status"></p><button id="received-label-print" class="primary full">프린터 선택·인쇄</button><button id="received-label-done" class="secondary full" disabled>실제 출력 완료 확인</button><p class="helper">인쇄를 취소했다면 완료를 누르지 마세요. 실제 출력물을 확인한 뒤 완료해 주세요. DK-22210은 PC 인쇄 창에서 ‘29 mm 연속’과 위 라벨의 길이를 맞춰 주세요.</p></dialog>
 <div id="label-print-area" aria-hidden="true"></div><style id="label-page-style"></style>
 `;

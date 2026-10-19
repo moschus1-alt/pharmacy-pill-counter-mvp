@@ -1,5 +1,5 @@
 import {dispensingView,dispensingDialogs} from './dispensing-view.js';
-import {parseProductBarcode,barcodePayload,localDate,labelIssues,validCount} from './dispensing-data.js';
+import {parseProductBarcode,barcodePayload,labelDimensions,labelSizeText,localDate,labelIssues,validCount} from './dispensing-data.js';
 import {createLabel,labelFits,printLabel} from './label-view.js';
 import {barcodeScanner} from './barcode-scanner.js';
 import {printConnection} from './print-connection.js';
@@ -15,10 +15,15 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
   const fields={name:'product-name',strength:'product-strength',manufacturer:'product-manufacturer',lot:'product-lot',expiry:'product-expiry',packedOn:'packed-on',useBy:'use-by',size:'label-size',copies:'label-copies'};
   let lookupController=null,lookupVersion=0,lookupPending=false;
   let catalog={};try{catalog=JSON.parse(localStorage.getItem(catalogKey)||'{}');if(!catalog||typeof catalog!=='object'||Array.isArray(catalog))catalog={};}catch{ /* Continue without a saved catalog. */ }
+  const paperKey='pill-label-paper-v1';
+  function paperSettings(){return {size:$('label-size').value,widthMm:Number($('label-width').value),heightMm:Number($('label-height').value)};}
+  try{const saved=JSON.parse(localStorage.getItem(paperKey)||'null');if(saved&&labelDimensions(saved)){$('label-size').value=saved.size;if(['custom','dk22210'].includes(saved.size)){$('label-width').value=saved.widthMm;$('label-height').value=saved.heightMm;}}}catch{}
+  function savePaper(){const paper=paperSettings();if(labelDimensions(paper))try{localStorage.setItem(paperKey,JSON.stringify(paper));}catch{}}
   $('packed-on').value=localDate();
   function labelData() {
     const data={code:product?.code||'',count};
     for(const [key,id] of Object.entries(fields))data[key]=$(id).value.trim();
+    if(['custom','dk22210'].includes(data.size)){data.widthMm=Number($('label-width').value);data.heightMm=Number($('label-height').value);}
     data.copies=Number(data.copies);return data;
   }
   function clearSent(){clearTimeout(statusTimer);sendJob=null;$('label-send-status').textContent='';}
@@ -92,7 +97,13 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     try{localStorage.setItem(catalogKey,JSON.stringify(catalog));}catch{$('barcode-status').textContent='기기 저장 공간을 사용할 수 없어요. 이번 라벨은 계속 만들 수 있어요.';}
   }
   function render() {
-    for(const id of [...Object.values(fields),'product-barcode','remember-product','label-reviewed','barcode-open','barcode-apply','dispense-start-count','dispense-new'])$(id).disabled=sending;
+    for(const id of [...Object.values(fields),'label-width','label-height','product-barcode','remember-product','label-reviewed','barcode-open','barcode-apply','dispense-start-count','dispense-new'])$(id).disabled=sending;
+    $('custom-label-fields').hidden=!['custom','dk22210'].includes($('label-size').value);
+    const selected=paperSettings();
+    $('label-width').disabled=sending||selected.size!=='custom';$('label-height').disabled=sending||!['custom','dk22210'].includes(selected.size);
+    const description=labelSizeText(selected);
+    $('label-paper-summary').textContent=`선택한 용지: ${description}${labelDimensions(selected)?' · 이 기기에 저장돼요.':''}`;
+    $('printer-test-paper').textContent=`테스트 인쇄 용지: ${description}. 크기는 소분 화면의 ‘라벨 크기’에서 변경해 주세요.`;
     const data=labelData(),paper=createLabel(data);
     $('label-preview').replaceChildren(paper);
     const issues=labelIssues(data);
@@ -100,7 +111,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     $('dispense-start-count').disabled=sending||lookupPending;
     if(product?.raw!==barcodePayload($('product-barcode').value))issues.unshift('입력한 바코드를 적용해 주세요.');
     // Hidden tabs have no layout; check again when the tab becomes visible.
-    if(!$('dispense-panel').hidden&&!labelFits(paper))issues.push('내용이 라벨 크기를 넘어가요. 큰 라벨을 선택하거나 제품명·함량을 줄여 주세요.');
+    if(!$('dispense-panel').hidden&&!labelFits(paper))issues.push('내용이 라벨 크기를 넘어가요. 연속 용지의 길이를 늘리거나 더 큰 라벨을 선택해 주세요.');
     $('dispense-count').value=count===null?'—':String(count);
     $('dispense-count-state').textContent=count===null?'카운팅 전':'수량 확인 완료';
     $('dispense-count-state').classList.toggle('active',count!==null);
@@ -126,8 +137,10 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
       $('barcode-status').textContent='직접 입력한 제품 정보예요. 현재 포장과 대조해 주세요.';
       $('product-lookup-details').textContent='';
     }
+    if(key==='size'){if($('label-size').value==='dk22210')$('label-width').value=29;savePaper();}
     changed();
   });
+  for(const id of ['label-width','label-height'])$(id).addEventListener('input',()=>{savePaper();changed();});
   $('label-reviewed').onchange=render;
   $('dispense-form').onsubmit=event=>{
     event.preventDefault();
@@ -137,7 +150,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     $('dispense-count-product').textContent=$('product-name').value;
     startCounting();
   };
-  connection=printConnection({onChange:render,onOpenDispensing:openDispensing});
+  connection=printConnection({onChange:render,onOpenDispensing:openDispensing,getPaperSettings:paperSettings});
   async function trackJob(job) {
     if(sendJob!==job)return;
     try {
@@ -168,7 +181,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
   };
   $('dispense-new').onclick=()=>{
     if((count!==null||$('product-name').value)&&!window.confirm('현재 라벨 입력을 비우고 다음 소분을 시작할까요? 이미 PC에 보낸 요청은 그대로 남아요.'))return;
-    stopLookup();$('product-lookup-details').textContent='';product=null;count=null;$('dispense-form').reset();$('packed-on').value=localDate();changed({clearQuantity:true});
+    const paper=paperSettings();stopLookup();$('product-lookup-details').textContent='';product=null;count=null;$('dispense-form').reset();$('label-size').value=paper.size;$('label-width').value=paper.widthMm;$('label-height').value=paper.heightMm;$('packed-on').value=localDate();changed({clearQuantity:true});
     $('barcode-status').textContent='다음 제품의 바코드를 읽어 주세요.';$('product-barcode').focus();
   };
   $('dispense-return').onclick=openDispensing;
