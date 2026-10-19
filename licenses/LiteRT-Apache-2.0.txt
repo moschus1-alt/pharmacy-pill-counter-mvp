@@ -1,0 +1,6 @@
+LiteRT.js @litertjs/core 2.5.3 / @litertjs/wasm-utils 2.5.3
+Copyright 2025 Google LLC
+https://github.com/google-ai-edge/LiteRT
+Licensed under Apache License, Version 2.0. See Apache-2.0.txt.
+The ESM import of @litertjs/wasm-utils is rewritten to a local relative path
+by scripts/build-litert.mjs; no inference kernels are modified.

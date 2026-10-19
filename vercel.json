@@ -19,6 +19,15 @@
   },
   "headers": [
     {
+      "source": "/vendor/litert-2.5.3/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
       "source": "/model-download/:version/:part",
       "headers": [
         {

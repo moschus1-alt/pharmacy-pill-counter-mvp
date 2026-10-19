@@ -1,6 +1,6 @@
 {
   "name": "pharmacy-pill-counter",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,9 @@
     "test:dispensing": "node checks/dispensing.mjs",
     "test:products": "node checks/product-lookup.mjs",
     "test:pc": "node checks/pc-view.mjs",
-    "test:printer": "node checks/native-printer.mjs"
+    "test:printer": "node checks/native-printer.mjs",
+    "test:local": "node checks/local-math.mjs && node checks/local-inference.mjs",
+    "test:model": "node checks/model-download.mjs"
   },
   "devDependencies": {
     "@zxing/browser": "0.1.5",
@@ -20,6 +22,7 @@
     "qrcode-generator": "2.0.4"
   },
   "dependencies": {
+    "@litertjs/core": "2.5.3",
     "@vercel/blob": "2.8.2"
   }
 }
