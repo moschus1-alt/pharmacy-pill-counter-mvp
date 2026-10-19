@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve,extname,sep} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {chromium} from 'playwright';
-import {parseProductBarcode,gs1Expiry,localDate,labelDimensions} from '../src/dispensing-data.js';
+import {parseProductBarcode,gs1Expiry,localDate,labelDimensions,labelProductName} from '../src/dispensing-data.js';
 import {createRelay,normalizeLabel} from '../api/print-relay.js';
 
 assert.deepEqual(parseProductBarcode(']d201088012345678901729123110LOT123\x1d21SERIAL'),{raw:'01088012345678901729123110LOT123\x1d21SERIAL',code:'08801234567890',lot:'LOT123',expiry:'2029-12-31'});
@@ -24,6 +24,11 @@ for(const size of ['custom','dk22210']) {
 assert.throws(()=>normalizeLabel({...sample,size:'dk22210',widthMm:62,heightMm:90}));
 assert.throws(()=>normalizeLabel({...sample,size:'custom',widthMm:'29',heightMm:90}));
 assert.deepEqual(labelDimensions(normalizeLabel({...sample,size:'62x100'})),[62,100]);
+assert.equal(labelProductName('약국용타이레놀정500mg_(아세트아미노펜)'), '약국용타이레놀정500mg');
+assert.equal(labelProductName('상품명（성분(수화물)）＿10mg'), '상품명10mg');
+assert.equal(labelProductName('상품명(성분명'), '상품명');
+assert.equal(normalizeLabel({...sample,name:'테스트정_(성분명)'}).name,'테스트정');
+assert.throws(()=>normalizeLabel({...sample,name:'_(성분명)'}));
 const values=new Map();let clock=Date.now();
 const store={async read(path){return values.get(path)||null;},async write(path,value,overwrite=false){if(values.has(path)&&!overwrite)throw Error('duplicate');values.set(path,structuredClone(value));},async paths(prefix,limit=100){return [...values.keys()].filter(path=>path.startsWith(prefix)).sort().slice(0,limit).map(path=>({path,uploadedAt:clock}));},async remove(paths){for(const path of paths)values.delete(path);}};
 const relay=createRelay(store,()=>clock);
@@ -107,7 +112,10 @@ try {
   await mobile.locator('#pc-connection-banner').click();assert(await mobile.locator('#printer-dialog').isVisible());await mobile.locator('#printer-dialog-close').click();
   await mobile.locator('#product-barcode').fill('(01)08801234567890(17)291231(10)LOT001');await mobile.locator('#barcode-apply').click();
   assert.equal(await mobile.locator('#product-lot').inputValue(),'LOT001');assert.equal(await mobile.locator('#product-expiry').inputValue(),'2029-12-31');
-  await mobile.locator('#product-name').fill('테스트정');await mobile.locator('#product-strength').fill('500 mg');await mobile.locator('#dispense-start-count').click();
+  await mobile.locator('#product-name').fill('약국용아주긴상품이름서방정500밀리그램_(성분명)');
+  const nameLayout=await mobile.locator('#label-preview .label-product').evaluate(el=>({text:el.textContent,whiteSpace:getComputedStyle(el).whiteSpace,overflow:getComputedStyle(el).textOverflow,height:el.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(el).lineHeight),clipped:el.scrollWidth>el.clientWidth}));
+  assert.equal(nameLayout.text,'약국용아주긴상품이름서방정500밀리그램');assert.equal(nameLayout.whiteSpace,'nowrap');assert.equal(nameLayout.overflow,'ellipsis');assert(nameLayout.clipped);assert(Math.abs(nameLayout.height-nameLayout.lineHeight)<1);
+  await mobile.locator('#product-name').fill('테스트정_(성분명)');await mobile.locator('#product-strength').fill('500 mg');await mobile.locator('#dispense-start-count').click();
   assert(await mobile.locator('#dispense-count-banner').isVisible());
   assert.match(await mobile.locator('#dispense-count-connection').innerText(),/약국 라벨 PC.*연결됨/);
   await mobile.locator('#file-input').setInputFiles(fileURLToPath(new URL('../examples/mediseg-8-pills.png',import.meta.url)));
@@ -121,6 +129,8 @@ try {
   await desktop.waitForFunction(()=>document.querySelectorAll('.received-job').length===1,{},{timeout:15000});
   await desktop.getByRole('button',{name:'라벨 보기·출력',exact:true}).click();
   assert.equal(await desktop.locator('#received-label-preview .label-heading strong').innerText(),'8개');
+  assert.equal(await desktop.locator('#received-label-preview .label-product').innerText(),'테스트정');
+  assert.equal(await mobile.locator('#product-name').inputValue(),'테스트정_(성분명)');
   assert(await desktop.locator('#received-label-done').isDisabled());
   await desktop.locator('#received-label-print').click();assert.equal(await desktop.evaluate(()=>window.printCalls),1);
   assert.match(await desktop.locator('#received-label-meta').innerText(),/DK-22210.*29 × 90.5 mm/);

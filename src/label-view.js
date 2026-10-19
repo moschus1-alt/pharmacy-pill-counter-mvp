@@ -1,4 +1,4 @@
-import {LABEL_SIZES,labelDimensions} from './dispensing-data.js';
+import {LABEL_SIZES,labelDimensions,labelProductName} from './dispensing-data.js';
 
 function element(tag,text,className='') {
   const node=document.createElement(tag);node.textContent=text;node.className=className;return node;
@@ -13,7 +13,7 @@ export function createLabel(data,{test=false}={}) {
   paper.classList.toggle('label-brother',data.size==='dk22210'||['62x29','62x100','29x90'].includes(data.size));
   const heading=element('div','','label-heading');
   heading.append(element('span',test?'프린터 테스트':'의약품 예제소분'),element('strong',`${data.count??'—'}개`));
-  paper.append(heading,element('h3',data.name||'제품명을 입력해 주세요','label-product'));
+  paper.append(heading,element('h3',labelProductName(data.name)||'제품명을 입력해 주세요','label-product'));
   if(data.strength)paper.append(element('p',data.strength,'label-strength'));
   const details=element('div','','label-details');
   if(data.lot)details.append(element('p',`제조번호 ${data.lot}`));

@@ -16,6 +16,18 @@ export function labelSizeText(data) {
   const size=labelDimensions(data);return size?`${data.size==='dk22210'?'DK-22210 · ':''}${size[0]} × ${size[1]} mm`:'용지 크기를 확인해 주세요';
 }
 
+// Print the trade name without parenthetical ingredients or underscore separators.
+// Keep the original lookup/form value available for product verification.
+export function labelProductName(value) {
+  let depth=0,result='';
+  for(const char of String(value??'')) {
+    if(char==='('||char==='（'){depth++;continue;}
+    if(char===')'||char==='）'){depth=Math.max(0,depth-1);continue;}
+    if(!depth&&char!=='_'&&char!=='＿')result+=char;
+  }
+  return result.replace(/\s+/g,' ').trim();
+}
+
 export function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }

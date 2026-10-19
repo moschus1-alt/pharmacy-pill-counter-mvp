@@ -47,7 +47,7 @@ export const dispensingView=`
       <p id="label-paper-summary" class="helper" role="status"></p>
       <p class="helper">DK-22210은 폭 29 mm 연속 용지예요. 한 장 길이는 우선 90 mm이며 조절할 수 있어요. QL-550은 롤 폭이 최대 62 mm예요. 연속 용지는 폭과 잘라낼 한 장 길이를 입력해 주세요. PC 인쇄 창에서도 같은 용지 크기를 선택해야 해요.</p>
       <p class="helper">소분 후 사용기한은 확인한 기준에 따라 직접 입력해 주세요.</p>
-      <div class="label-preview-wrap"><div id="label-preview" aria-label="소분 라벨 미리보기"></div><p>선택한 용지 크기의 미리보기</p></div>
+      <div class="label-preview-wrap"><div id="label-preview" aria-label="소분 라벨 미리보기"></div><p>상품명은 괄호·밑줄 없이 한 줄로 표시해요. 긴 이름은 …로 줄여요.</p></div>
       <p id="label-validation" class="helper" role="status"></p>
       <label class="check-label review-label"><input id="label-reviewed" type="checkbox"><span>포장의 제품·제조번호·사용기한과 실제 수량을 확인했어요.</span></label>
       <div class="connection-summary"><span class="connection-dot" id="pc-connection-dot"></span><span id="pc-connection-status">출력 PC를 연결해 주세요</span><button id="pc-connect-inline" type="button" class="text-button">연결</button></div>

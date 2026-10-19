@@ -1,6 +1,6 @@
 import {put,get,list,del} from '@vercel/blob';
 import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
-import {labelIssues} from '../src/dispensing-data.js';
+import {labelIssues,labelProductName} from '../src/dispensing-data.js';
 
 const TTL=8*60*60*1000, ROOT='pill-label-relay/';
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -14,7 +14,7 @@ function fail(status,message){throw Object.assign(new Error(message),{status});}
 export function normalizeLabel(input) {
   if (!input || typeof input!=='object') fail(400,'라벨 내용이 없어요.');
   const text=(key,max)=>String(input[key]??'').trim().slice(0,max);
-  const data={code:text('code',100),name:text('name',80),strength:text('strength',40),manufacturer:text('manufacturer',60),lot:text('lot',40),expiry:text('expiry',10),useBy:text('useBy',10),packedOn:text('packedOn',10),size:text('size',10),count:input.count,copies:input.copies};
+  const data={code:text('code',100),name:labelProductName(text('name',200)).slice(0,80),strength:text('strength',40),manufacturer:text('manufacturer',60),lot:text('lot',40),expiry:text('expiry',10),useBy:text('useBy',10),packedOn:text('packedOn',10),size:text('size',10),count:input.count,copies:input.copies};
   if(['custom','dk22210'].includes(data.size)){data.widthMm=input.widthMm;data.heightMm=input.heightMm;}
   if (!/^[\x20-\x7e]+$/.test(data.code)) fail(400,'바코드를 확인해 주세요.');
   for (const field of ['expiry','useBy','packedOn']) {

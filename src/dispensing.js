@@ -1,5 +1,5 @@
 import {dispensingView,dispensingDialogs} from './dispensing-view.js';
-import {parseProductBarcode,barcodePayload,labelDimensions,labelSizeText,localDate,labelIssues,validCount} from './dispensing-data.js';
+import {parseProductBarcode,barcodePayload,labelProductName,labelDimensions,labelSizeText,localDate,labelIssues,validCount} from './dispensing-data.js';
 import {createLabel,labelFits,printLabel} from './label-view.js';
 import {barcodeScanner} from './barcode-scanner.js';
 import {printConnection} from './print-connection.js';
@@ -24,6 +24,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
     const data={code:product?.code||'',count};
     for(const [key,id] of Object.entries(fields))data[key]=$(id).value.trim();
     if(['custom','dk22210'].includes(data.size)){data.widthMm=Number($('label-width').value);data.heightMm=Number($('label-height').value);}
+    data.name=labelProductName(data.name);
     data.copies=Number(data.copies);return data;
   }
   function clearSent(){clearTimeout(statusTimer);sendJob=null;$('label-send-status').textContent='';}
@@ -91,7 +92,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
   function remember() {
     if(!$('remember-product').checked||!product)return;
     const data=labelData();
-    Object.defineProperty(catalog,normalizeProductCode(product.code)||product.code,{value:{name:data.name,strength:data.strength,manufacturer:data.manufacturer},enumerable:true,configurable:true,writable:true});
+    Object.defineProperty(catalog,normalizeProductCode(product.code)||product.code,{value:{name:$('product-name').value.trim(),strength:data.strength,manufacturer:data.manufacturer},enumerable:true,configurable:true,writable:true});
     // Keep the catalog bounded on shared tablets/phones.
     const entries=Object.entries(catalog).slice(-500);catalog=Object.fromEntries(entries);
     try{localStorage.setItem(catalogKey,JSON.stringify(catalog));}catch{$('barcode-status').textContent='기기 저장 공간을 사용할 수 없어요. 이번 라벨은 계속 만들 수 있어요.';}

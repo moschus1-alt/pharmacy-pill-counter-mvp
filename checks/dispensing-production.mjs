@@ -52,7 +52,8 @@ try {
   await desktop.waitForFunction(()=>document.querySelectorAll('.received-job').length===1,{},{timeout:30000});
   await desktop.getByRole('button',{name:'라벨 보기·출력',exact:true}).click();
   assert.equal(await desktop.locator('#received-label-preview .label-heading strong').innerText(),'8개');
-  assert.match(await desktop.locator('#received-label-preview').innerText(),/약국용타이레놀정500mg/);
+  assert.equal(await desktop.locator('#received-label-preview .label-product').innerText(),'약국용타이레놀정500mg');
+  assert.equal(await desktop.locator('#received-label-preview .label-product').evaluate(el=>getComputedStyle(el).whiteSpace),'nowrap');
   await desktop.screenshot({path:results+'/production-dispensing-pc.png',fullPage:true});
   assert.match(await desktop.locator('#received-label-meta').innerText(),/DK-22210.*29 × 90 mm/);
   await desktop.locator('#received-label-print').click();assert.equal(await desktop.evaluate(()=>window.printCalls),1);
