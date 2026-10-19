@@ -2,6 +2,7 @@ import {PillDetector} from './image-detector.js';
 import {CAMERA_ASPECT_RATIO,cameraConstraints,captureCameraFrame as captureToFrame} from './camera-frame.js';
 import {photoGestures} from './photo-gestures.js';
 import {appNavigation} from './app-navigation.js';
+import {setupDispensing} from './dispensing.js';
 document.documentElement.style.setProperty('--camera-aspect',String(CAMERA_ASPECT_RATIO));
 const $=id=>document.getElementById(id);
 const detector=new PillDetector();
@@ -15,17 +16,27 @@ let saveGeneration=0,saveURL=null,saveFile=null;
 let renderedObjects=null,renderedLength=-1;
 let panX=0,panY=0;
 let rasterDirty=true;
+let dispensingCount=false;
+const dispensing=setupDispensing({
+ startCounting(){resetPhoto();dispensingCount=true;switchTab('photo');update();},
+ cancelCounting(){dispensingCount=false;},
+ openDispensing(){switchTab('dispense');}
+});
 const clone=()=>structuredClone(objects);
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
 function setStatus(text,kind=''){$('status').textContent=text;$('status').className=`status ${kind}`;}
 function invalidate(){confirmed=false;$('confirmation').textContent='';}
 function update(){
  const live=currentTab==='live';
+ const inDispense=currentTab==='dispense';
  const inCapture=captureMode&&!live;
- document.querySelector('.header').hidden=inCapture;document.querySelector('.tabs').hidden=inCapture;document.querySelector('.counter').hidden=inCapture;document.querySelector('footer').hidden=inCapture;
- $('photo-tab').classList.toggle('selected',!live);$('photo-tab').setAttribute('aria-pressed',String(!live));
+ document.querySelector('.header').hidden=inCapture;document.querySelector('.tabs').hidden=inCapture;document.querySelector('.counter').hidden=inCapture||inDispense;document.querySelector('footer').hidden=inCapture;
+ $('photo-tab').classList.toggle('selected',!live&&!inDispense);$('photo-tab').setAttribute('aria-pressed',String(!live&&!inDispense));
  $('live-tab').classList.toggle('selected',live);$('live-tab').setAttribute('aria-pressed',String(live));
- $('photo-panel').hidden=live||inCapture;$('capture-panel').hidden=!inCapture;$('live-panel').hidden=!live;
+ $('dispense-tab').classList.toggle('selected',inDispense);$('dispense-tab').setAttribute('aria-pressed',String(inDispense));
+ $('dispense-panel').hidden=!inDispense;
+ $('dispense-count-banner').hidden=!dispensingCount||inCapture||inDispense;
+ $('photo-panel').hidden=live||inCapture||inDispense;$('capture-panel').hidden=!inCapture;$('live-panel').hidden=!live;
  $('count-label').textContent=live?'최근 화면의 알약':'사진 속 알약';
  $('count').value=live?(liveCount===null?'—':String(liveCount)):(loaded&&(analyzed||manualEdited)?String(objects.length):'—');
  if(live){
@@ -180,10 +191,11 @@ function takePhoto(){
  catch(error){captureNotice=error.message;update();}
 }
 function switchTab(tab){
+ dispensing.stopScanner();
  if(captureMode)stopCaptureCamera();captureMode=false;
- if(currentTab===tab){update();if(tab==='live'&&!stream&&!starting)void startLive();return;}imageRequest++;stopLive();stopAnalysis();currentTab=tab;message('');
+ if(currentTab===tab){update();if(tab==='dispense')dispensing.show();if(tab==='live'&&!stream&&!starting)void startLive();return;}imageRequest++;stopLive();stopAnalysis();currentTab=tab;message('');
  if(tab==='live'){liveCount=null;liveAt=0;$('live-hint').textContent='카메라를 열고 첫 화면을 분석하고 있어요…';}
- update();fit();if(tab==='live')void startLive();
+ update();fit();if(tab==='dispense')dispensing.show();if(tab==='live')void startLive();
 }
 function resetPhoto(){
  imageRequest++;captureMode=false;stopCaptureCamera();stopLive();stopAnalysis();releaseSave();currentTab='photo';
@@ -191,10 +203,12 @@ function resetPhoto(){
  liveCount=null;liveAt=0;source.width=source.height=1;canvas.width=canvas.height=1;$('markers').replaceChildren();renderedObjects=null;invalidate();message('');update();
 }
 function backWithinApp(){
+ if(dispensing.closeDialog())return;
  if($('save-dialog').open){$('save-dialog').close();return;}
  if($('leave-dialog').open){$('leave-dialog').close();return;}
  if($('exit-dialog').open){$('exit-dialog').close();return;}
  if(captureMode){closeCaptureMode();return;}
+ if(currentTab==='dispense'){switchTab('photo');return;}
  if(currentTab==='live'){switchTab('photo');return;}
  if(busy){stopAnalysis();update();message('분석을 멈췄어요. 사진은 그대로 남아 있습니다.');return;}
  if(mode!=='view'){mode='view';update();return;}
@@ -273,7 +287,7 @@ function saveToDevice(){
  $('save-download').click();$('save-status').textContent='사진 파일을 내려받았어요. 휴대폰의 다운로드에서 확인해 주세요.';
  setTimeout(()=>{saving=false;$('save-device').disabled=!saveFile;},900);
 }
-$('photo-tab').onclick=()=>switchTab('photo');$('live-tab').onclick=()=>switchTab('live');
+$('photo-tab').onclick=()=>switchTab('photo');$('live-tab').onclick=()=>switchTab('live');$('dispense-tab').onclick=()=>switchTab('dispense');
 $('camera-open').onclick=openCaptureMode;$('capture-close').onclick=closeCaptureMode;$('shutter').onclick=takePhoto;
 $('retake').onclick=openCaptureMode;
 $('other-photo').onclick=()=>$('file-input').click();
@@ -297,7 +311,13 @@ function editPhoto(e){
 canvas.onclick=editPhoto;
 $('undo').onclick=()=>{if(!undoStack.length)return;objects=undoStack.pop();invalidate();update();draw();};
 $('zoom-in').onclick=()=>zoomAt(zoom+.5);$('zoom-out').onclick=()=>zoomAt(zoom-.5);$('zoom-reset').onclick=()=>{zoom=1;panX=panY=0;fit();};
-$('confirm').onclick=()=>{confirmed=true;$('confirmation').textContent=`직접 확인한 수량은 ${objects.length}개입니다.`;update();};
+$('confirm').onclick=()=>{
+ confirmed=true;$('confirmation').textContent=`직접 확인한 수량은 ${objects.length}개입니다.`;update();
+ if(dispensingCount){
+  if(dispensing.acceptCount(objects.length)){dispensingCount=false;switchTab('dispense');$('dispense-count-heading').scrollIntoView({behavior:'smooth',block:'start'});}
+  else message('소분 라벨에는 1개 이상의 수량이 필요해요. 사진의 번호를 확인해 주세요.',true);
+ }
+};
 $('live-stop').onclick=()=>{stopLive();update();$('live-hint').textContent='다시 연결하려면 실시간 카운팅 탭을 눌러 주세요.';};$('live-capture').onclick=freezeLive;
 $('save-photo').onclick=()=>{if(!loaded||busy)return;$('save-marked').disabled=!analyzed&&!manualEdited;$('save-dialog').showModal();void prepareSave('plain');};
 $('save-close').onclick=()=>$('save-dialog').close();$('save-dialog').addEventListener('close',releaseSave);

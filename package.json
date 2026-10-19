@@ -1,8 +1,20 @@
 {
   "name": "pharmacy-pill-counter",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
-  "scripts": {"build": "node build.mjs", "test:camera": "node checks/mobile-camera.mjs"},
-  "devDependencies": {"playwright": "1.62.1"}
+  "scripts": {
+    "build": "node build.mjs",
+    "test:camera": "node checks/mobile-camera.mjs",
+    "test:dispensing": "node checks/dispensing.mjs"
+  },
+  "devDependencies": {
+    "@zxing/browser": "0.1.5",
+    "jsbarcode": "3.12.1",
+    "playwright": "1.62.1",
+    "qrcode-generator": "2.0.4"
+  },
+  "dependencies": {
+    "@vercel/blob": "2.8.2"
+  }
 }

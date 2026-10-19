@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f7f4"><title>알약 카운터</title><link rel="stylesheet" href="style.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f7f4"><title>알약 카운터</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="dispensing.css"></head>
 <body>
 <header class="header"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">✚</span> 알약 카운터</a><span class="header-note">한눈에, 정확하게 확인</span></header>
 <main>
@@ -30,5 +30,5 @@
 <dialog id="save-dialog" aria-labelledby="save-title"><div class="dialog-heading"><h2 id="save-title">사진 저장</h2><button id="save-close" class="close-button" aria-label="저장 창 닫기">×</button></div><div class="save-options" aria-label="저장할 사진"><button id="save-plain" class="selected" aria-pressed="true">사진만</button><button id="save-marked" aria-pressed="false">번호 포함</button></div><img id="save-preview" alt="저장할 사진 미리보기"><p id="save-help" class="helper">사진을 준비하고 있어요…</p><button id="save-device" class="primary full" disabled>휴대폰에 저장</button><a id="save-download" class="download-link" hidden>파일로 내려받기</a><p id="save-status" class="helper" role="status"></p></dialog>
 <dialog id="leave-dialog" aria-labelledby="leave-title"><div class="dialog-heading"><h2 id="leave-title">첫 화면으로 돌아갈까요?</h2></div><p class="helper">아직 저장하지 않은 사진과 수정한 표시가 사라집니다.</p><div class="save-row"><button id="leave-cancel" class="secondary">사진 유지</button><button id="leave-confirm" class="primary">돌아가기</button></div></dialog>
 <dialog id="exit-dialog" aria-labelledby="exit-title"><div class="dialog-heading"><h2 id="exit-title">나가시겠습니까?</h2></div><p class="helper">알약 카운터를 종료할까요?</p><div class="save-row"><button id="exit-cancel" class="secondary">계속 사용</button><button id="exit-confirm" class="primary">나가기</button></div></dialog>
-<input id="file-input" type="file" accept="image/*" hidden><script type="module" src="src/app.js"></script>
+<input id="file-input" type="file" accept="image/*" hidden><script defer src="vendor/zxing-browser.min.js"></script><script defer src="vendor/JsBarcode.code128.min.js"></script><script defer src="vendor/qrcode.js"></script><script type="module" src="src/app.js"></script>
 </body></html>
