@@ -216,7 +216,7 @@ function backWithinApp(){
  if(loaded){$('leave-dialog').showModal();return;}
  $('exit-dialog').showModal();
 }
-const navigation=appNavigation(backWithinApp,()=>message('이전 화면이 없어 앱을 닫지 못했어요. 브라우저에서 탭을 닫아 주세요.',true));
+const navigation=appNavigation(backWithinApp);
 async function startLive(){
  if(starting||stream)return;
  if(!navigator.mediaDevices?.getUserMedia){message('이 브라우저에서 카메라를 열 수 없어요. Safari나 Chrome에서 열거나 사진 촬영을 이용해 주세요.',true);return;}

@@ -93,16 +93,17 @@ try{
   console.log('PASS center crop, round shape, live capture and both export ratios',orientation);
  }
  // Exercise both the platform close-request path and history-only browsers.
- for(const path of ['native','fallback']){
+ for(const path of ['native','fallback','toolbar']){
   await page.goto(base+'/?test&'+path);
   const back=async()=>{
    if(path==='native')await page.keyboard.press('Escape');
    else await page.goBack();
   };
+  // Toolbar traversal also runs with CloseWatcher present and without a page tap.
   if(path==='fallback')await page.locator('#photo-tab').click();
   await back();await page.waitForFunction(()=>document.getElementById('exit-dialog').open);
   await page.locator('#exit-cancel').click();
-  if(path==='fallback'){
+  if(path!=='native'){
    const baseline=await page.evaluate(()=>({pushes:window.testHistoryPushes,length:history.length}));
    // No intervening page taps: reproduce the repeated hardware-Back path
    // which previously pushed a fresh, browser-skippable history entry.
@@ -215,5 +216,36 @@ try{
  await page.locator('#photo-tab').click();await page.keyboard.press('Escape');
  await page.locator('#exit-confirm').click();await page.waitForURL(base+'/before');
  console.log('PASS explicit exit reaches previous page without another prompt');
+ // A separate tab has no previous document. Exercise the Samsung toolbar path
+ // before any page activation, delayed/ignored forward, repeat and reload.
+ for(const mode of ['normal','delayed','blocked']){
+  const fresh=await context.newPage();fresh.on('dialog',dialog=>dialog.accept());fresh.on('pageerror',error=>errors.push(error.message));
+  await fresh.addInitScript(mode=>{
+   if(mode==='normal')return;
+   const forward=history.forward.bind(history);
+   history.forward=()=>{if(mode==='delayed')setTimeout(forward,250);};
+  },mode);
+  const freshURL=base+'/?test&toolbar-'+mode;
+  await fresh.evaluate(url=>location.replace(url),freshURL);await fresh.waitForURL(freshURL);
+  await fresh.waitForFunction(()=>history.state?.__pillCounterNavigation==='guard');
+  const baseline=await fresh.evaluate(()=>({length:history.length,pushes:window.testHistoryPushes}));
+  await fresh.goBack();
+  await fresh.waitForFunction(()=>document.getElementById('exit-dialog').open,{},{timeout:1000});
+  if(mode==='delayed')assert.equal(await fresh.evaluate(()=>history.state.__pillCounterNavigation),'base','confirmation must not wait for forward');
+  if(mode!=='normal'){
+   await fresh.locator('#exit-cancel').click();
+   await fresh.goBack();await fresh.waitForFunction(()=>document.getElementById('exit-dialog').open);
+   assert.equal(await fresh.evaluate(()=>history.length),baseline.length,'repair must not grow history');
+  }
+  await fresh.locator('#exit-confirm').click();await fresh.waitForURL(base+'/exit.html');
+  assert.equal(await fresh.locator('h1').innerText(),'알약 카운터 사용을 마쳤어요');
+  assert(!await fresh.locator('.message.error').count());
+  await fresh.getByRole('link',{name:'알약 카운터 다시 열기'}).click();
+  await fresh.waitForFunction(()=>!!document.getElementById('dispense-tab'));
+  await fresh.reload();await fresh.goBack();await fresh.waitForFunction(()=>document.getElementById('exit-dialog').open);
+  await fresh.locator('#exit-cancel').click();
+  assert.equal(await fresh.locator('#camera-open').isVisible(),true);
+  await fresh.close();console.log('PASS fresh-tab toolbar confirmation, exit without previous page, restart/reload',mode,baseline);
+ }
  assert.deepEqual(errors,[]);console.log('PASS no browser errors; inference was mocked for geometry and navigation checks');
 }finally{await browser.close();server.close();}

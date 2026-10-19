@@ -1,11 +1,12 @@
 {
   "name": "pharmacy-pill-counter",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
     "test:camera": "node checks/mobile-camera.mjs",
+    "test:navigation": "node checks/navigation.mjs",
     "test:dispensing": "node checks/dispensing.mjs",
     "test:products": "node checks/product-lookup.mjs"
   },
