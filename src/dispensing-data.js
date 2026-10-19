@@ -73,6 +73,17 @@ export function parseProductBarcode(input) {
 
 export function validCount(value) {return Number.isSafeInteger(value)&&value>0&&value<=99999;}
 
+export function printFailureMessage(reason) {
+  const messages={
+    printer:'PC에서 프린터 문제로 요청을 중단했어요. 프린터 전원·USB 연결·Windows 인쇄 대기열을 확인해 주세요. (코드: printer)',
+    layout:'PC에서 라벨 용지 또는 인쇄 영역을 처리하지 못했어요. 휴대폰의 라벨 크기와 PC 프린터 드라이버의 용지 설정을 확인해 주세요. DK-22210의 폭은 29mm예요. (코드: layout)',
+    uncertain:'PC가 프린터 전달 결과를 확인하지 못했어요. 실제 출력물과 Windows 인쇄 대기열을 확인해 주세요. (코드: uncertain)',
+    acknowledged:'PC에서 확인 처리한 이전 실패 요청이에요. 이 요청은 다시 출력되지 않아요. (코드: acknowledged)',
+  };
+  const message=Object.hasOwn(messages,reason)?messages[reason]:'PC에서 출력 실패를 알렸지만 상세 원인은 보내지 않았어요. 유팜데일리의 오류 기록을 확인해 주세요.';
+  return message+' 중복 출력을 막기 위해 자동 재전송하지 않아요.';
+}
+
 export function labelIssues(data) {
   const issues=[];
   if (!data.code || !data.name.trim()) issues.push('바코드와 제품명을 입력해 주세요.');

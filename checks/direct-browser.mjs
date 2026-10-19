@@ -37,6 +37,16 @@ try{
  await phone.waitForFunction(()=>document.getElementById('label-send-status').textContent.includes('프린터로 보냈어요'),null,{timeout:20000});
  let printed=JSON.parse(await readFile(join(directory,'printed.json'),'utf8'));assert.equal(printed.length,1);assert.equal(printed[0].count,8);assert.equal(printed[0].name,'테스트정');assert.equal(printed[0].widthMm,29);
  await mkdir('.test-results',{recursive:true});await phone.screenshot({path:'.test-results/direct-mobile.png',fullPage:true});await pc.screenshot({path:'.test-results/direct-pc.png',fullPage:true});
+ // Exercise the actual result UI with the PC's reason codes; no extra print.
+ let failureReason;
+ await phone.route('**/api/direct?action=status&*',route=>route.fulfill({json:{status:'failed',reason:failureReason}}));
+ for(const [reason,message] of [['layout','코드: layout'],['printer','코드: printer'],['uncertain','코드: uncertain'],[undefined,'상세 원인은 보내지 않았어요'],['<private diagnostic>','상세 원인은 보내지 않았어요']]){
+  failureReason=reason;
+  await phone.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  await phone.waitForFunction(message=>document.getElementById('label-send-status').textContent.includes(message),message);
+  assert(!((await phone.locator('#label-send-status').textContent()).includes('<private diagnostic>')));
+ }
+ await phone.unroute('**/api/direct?action=status&*');
  await phone.reload();await phone.waitForFunction(()=>document.getElementById('pc-banner-title').textContent==='PC 직접 연결됨');
  // A single persistent local event stream, no polling storage. Rotate invalidates.
  await pc.locator('#rotate').click();await phone.waitForFunction(()=>document.getElementById('pc-banner-title').textContent==='PC 연결 안 됨',null,{timeout:20000});

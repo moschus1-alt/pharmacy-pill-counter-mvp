@@ -1,5 +1,5 @@
 import {dispensingView,dispensingDialogs} from './dispensing-view.js';
-import {parseProductBarcode,barcodePayload,labelProductName,labelDimensions,labelSizeText,localDate,labelIssues,validCount} from './dispensing-data.js';
+import {parseProductBarcode,barcodePayload,labelProductName,labelDimensions,labelSizeText,localDate,labelIssues,validCount,printFailureMessage} from './dispensing-data.js';
 import {createLabel,fitLabel,printLabel} from './label-view.js';
 import {barcodeScanner} from './barcode-scanner.js';
 import {printConnection} from './print-connection.js';
@@ -159,6 +159,7 @@ export function setupDispensing({startCounting,cancelCounting,openDispensing}) {
       const status=await connection.status(job.id);
       if(sendJob!==job)return;
       $('label-send-status').textContent=({waiting:connection.automatic()?'자동 출력을 기다리고 있어요.':'PC로 전송했어요. PC 출력 대기 화면에서 라벨을 확인해 주세요.',processing:'PC가 라벨을 처리 중이에요. 오래 멈춰 있다면 실제 출력물을 먼저 확인해 주세요.',spooled:'PC에서 프린터로 보냈어요. 실제 출력물을 확인해 주세요.',failed:'PC 자동 출력 중 오류가 발생했어요. 중복 출력하지 않도록 멈췄어요. PC와 실제 출력물을 확인해 주세요.',printed:'PC에서 실제 출력 완료를 확인했어요.',dismissed:'PC에서 이 라벨 요청을 취소했어요.'})[status.status]||'PC의 확인을 기다리고 있어요.';
+      if(status.status==='failed')$('label-send-status').textContent=printFailureMessage(status.reason);
       if(['printed','dismissed','spooled','failed'].includes(status.status))return;
     }catch(error){if(sendJob===job)$('label-send-status').textContent=`전송한 요청의 상태를 확인하지 못했어요. ${error.message}`;if(error.status===410)return;}
     if(sendJob===job)statusTimer=setTimeout(()=>void trackJob(job),8000);
